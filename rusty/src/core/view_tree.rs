@@ -25,11 +25,11 @@ pub struct ViewTree {
 
 impl ViewTree {
     /// Create a new ViewTree with a root view.
-    pub fn new(root_view: Box<dyn View>) -> Self {
+    pub fn new(root_view: Arc<dyn View>) -> Self {
         let root_id = uuid::Uuid::new_v4();
         let root_node = ViewNode {
             view_id: root_id,
-            view: Arc::from(root_view),
+            view: root_view,
             parent: None,
             children: Vec::new(),
         };
@@ -44,11 +44,11 @@ impl ViewTree {
     }
 
     /// Insert a child view under the given parent, returning the new child's ViewId.
-    pub fn insert(&mut self, parent_id: ViewId, view: Box<dyn View>) -> ViewId {
+    pub fn insert(&mut self, parent_id: ViewId, view: Arc<dyn View>) -> ViewId {
         let child_id = uuid::Uuid::new_v4();
         let child_node = ViewNode {
             view_id: child_id,
-            view: Arc::from(view),
+            view,
             parent: Some(parent_id),
             children: Vec::new(),
         };
@@ -64,11 +64,11 @@ impl ViewTree {
         &mut self,
         parent_id: ViewId,
         child_id: ViewId,
-        view: Box<dyn View>,
+        view: Arc<dyn View>,
     ) -> ViewId {
         let child_node = ViewNode {
             view_id: child_id,
-            view: Arc::from(view),
+            view,
             parent: Some(parent_id),
             children: Vec::new(),
         };
@@ -178,11 +178,11 @@ mod tests {
 
     #[test]
     fn test_view_tree_insert_and_ancestors() {
-        let mut tree = ViewTree::new(Box::new(DummyView("root".into())));
+        let mut tree = ViewTree::new(Arc::new(DummyView("root".into())));
         let root = tree.root_id();
 
-        let child = tree.insert(root, Box::new(DummyView("child".into())));
-        let grandchild = tree.insert(child, Box::new(DummyView("grandchild".into())));
+        let child = tree.insert(root, Arc::new(DummyView("child".into())));
+        let grandchild = tree.insert(child, Arc::new(DummyView("grandchild".into())));
 
         let ancestors = tree.ancestors(grandchild);
         assert_eq!(ancestors.len(), 2);
@@ -195,12 +195,12 @@ mod tests {
 
     #[test]
     fn test_view_tree_remove_subtree() {
-        let mut tree = ViewTree::new(Box::new(DummyView("root".into())));
+        let mut tree = ViewTree::new(Arc::new(DummyView("root".into())));
         let root = tree.root_id();
 
-        let child = tree.insert(root, Box::new(DummyView("child".into())));
-        let gc1 = tree.insert(child, Box::new(DummyView("gc1".into())));
-        let gc2 = tree.insert(child, Box::new(DummyView("gc2".into())));
+        let child = tree.insert(root, Arc::new(DummyView("child".into())));
+        let gc1 = tree.insert(child, Arc::new(DummyView("gc1".into())));
+        let gc2 = tree.insert(child, Arc::new(DummyView("gc2".into())));
 
         let removed = tree.remove(child);
         assert_eq!(removed.len(), 3);
@@ -217,12 +217,12 @@ mod tests {
 
     #[test]
     fn test_view_tree_subtree_ids() {
-        let mut tree = ViewTree::new(Box::new(DummyView("root".into())));
+        let mut tree = ViewTree::new(Arc::new(DummyView("root".into())));
         let root = tree.root_id();
 
-        let c1 = tree.insert(root, Box::new(DummyView("c1".into())));
-        let c2 = tree.insert(root, Box::new(DummyView("c2".into())));
-        let gc = tree.insert(c1, Box::new(DummyView("gc".into())));
+        let c1 = tree.insert(root, Arc::new(DummyView("c1".into())));
+        let c2 = tree.insert(root, Arc::new(DummyView("c2".into())));
+        let gc = tree.insert(c1, Arc::new(DummyView("gc".into())));
 
         let subtree = tree.subtree_ids(root);
         assert_eq!(subtree.len(), 4);

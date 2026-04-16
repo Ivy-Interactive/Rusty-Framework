@@ -159,7 +159,7 @@ pub struct EffectRecord {
 /// Entry for a child view registered during build via `child_view()`.
 pub struct ChildViewEntry {
     pub child_view_id: ViewId,
-    pub view: Box<dyn View>,
+    pub view: Arc<dyn View>,
     pub element: Element,
 }
 
@@ -321,7 +321,7 @@ impl<'a> BuildContext<'a> {
 
         self.child_views.push(ChildViewEntry {
             child_view_id,
-            view: Box::new(view),
+            view: Arc::new(view),
             element: element.clone(),
         });
 
