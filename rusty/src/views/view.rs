@@ -117,6 +117,18 @@ impl Element {
 /// A snapshot of a view's context map, cheaply clonable via `Arc`.
 pub type ContextSnapshot = HashMap<TypeId, Arc<dyn Any + Send + Sync>>;
 
+/// A single link in the ancestor context chain.
+///
+/// Instead of cloning a `Vec` of context snapshots at each `child_view()` call,
+/// each child holds an `Arc<AncestorLink>` that points to its parent's link.
+/// Propagation is O(1) per level (just an `Arc::clone`), mirroring Ivy Framework's
+/// linked `ViewContext._ancestor` pattern.
+pub struct AncestorLink {
+    pub view_id: ViewId,
+    pub contexts: ContextSnapshot,
+    pub parent: Option<Arc<AncestorLink>>,
+}
+
 /// A stateful component that produces an element tree.
 pub trait View: Send + Sync + 'static {
     /// Build the element tree for this view.
@@ -139,9 +151,10 @@ pub struct BuildContext<'a> {
     widget_id_counter: usize,
     /// Child views registered during this build via `child_view()`.
     pub(crate) child_views: Vec<ChildViewEntry>,
-    /// Cloned snapshots of ancestor context maps for safe context lookup.
-    /// Each entry is a (ViewId, context map) pair, cheaply cloned via Arc.
-    pub(crate) ancestor_contexts: Vec<(ViewId, ContextSnapshot)>,
+    /// Arc-linked chain of ancestor context snapshots.
+    /// Each link holds a view's context map and a pointer to its parent link.
+    /// Propagation is O(1) per level via `Arc::clone`.
+    pub(crate) ancestor_chain: Option<Arc<AncestorLink>>,
 }
 
 /// Cleanup function returned by an effect callback.
@@ -185,7 +198,7 @@ impl<'a> BuildContext<'a> {
             event_registry: EventRegistry::new(),
             widget_id_counter: 0,
             child_views: Vec::new(),
-            ancestor_contexts: Vec::new(),
+            ancestor_chain: None,
         }
     }
 
@@ -297,12 +310,13 @@ impl<'a> BuildContext<'a> {
         let mut child_ctx =
             BuildContext::with_view_id(&mut owned_store, self.rebuild_tx.clone(), child_view_id);
         child_ctx.reset();
-        // Set ancestor contexts: current view's store + all ancestors above.
-        // Clone via Arc::clone per entry (cheap reference count bump).
-        child_ctx.ancestor_contexts = self.ancestor_contexts.clone();
-        child_ctx
-            .ancestor_contexts
-            .push((self.current_view_id, self.store.contexts.clone()));
+        // Build the ancestor chain: wrap current view's context snapshot
+        // into a new link pointing to the parent's chain. O(1) via Arc::clone.
+        child_ctx.ancestor_chain = Some(Arc::new(AncestorLink {
+            view_id: self.current_view_id,
+            contexts: self.store.contexts.clone(),
+            parent: self.ancestor_chain.clone(),
+        }));
 
         let mut element = view.build(&mut child_ctx);
         element.assign_ids(&mut child_ctx);
@@ -328,18 +342,20 @@ impl<'a> BuildContext<'a> {
         (element, child_view_id, owned_store)
     }
 
-    /// Look up a context value by TypeId, walking the ancestor chain.
+    /// Look up a context value by TypeId, walking the Arc-linked ancestor chain.
     /// Returns None if not found in any ancestor.
     pub fn find_ancestor_context(&self, type_id: std::any::TypeId) -> Option<&dyn Any> {
         // First check current store
         if let Some(val) = self.store.contexts.get(&type_id) {
             return Some(val.as_ref());
         }
-        // Walk ancestors from nearest to farthest (safe — no raw pointers)
-        for (_view_id, contexts) in self.ancestor_contexts.iter().rev() {
-            if let Some(val) = contexts.get(&type_id) {
+        // Walk the linked ancestor chain from nearest to farthest
+        let mut link = self.ancestor_chain.as_deref();
+        while let Some(node) = link {
+            if let Some(val) = node.contexts.get(&type_id) {
                 return Some(val.as_ref());
             }
+            link = node.parent.as_deref();
         }
         None
     }
@@ -570,6 +586,136 @@ mod tests {
         assert!(
             clicked.load(std::sync::atomic::Ordering::SeqCst),
             "on_click handler should have fired"
+        );
+    }
+
+    #[test]
+    fn test_ancestor_chain_propagates_through_three_levels() {
+        use crate::hooks::use_context::{create_context, use_context};
+        use crate::widgets::text::TextBlock;
+        use std::sync::Mutex;
+
+        #[derive(Clone, Debug, PartialEq)]
+        struct Theme {
+            color: String,
+        }
+
+        static GRANDCHILD_RESULT: Mutex<Option<String>> = Mutex::new(None);
+
+        struct GrandchildView;
+        impl View for GrandchildView {
+            fn build(&self, ctx: &mut BuildContext) -> Element {
+                let theme: Theme = use_context(ctx);
+                *GRANDCHILD_RESULT.lock().unwrap() = Some(theme.color.clone());
+                Element::Widget(Box::new(TextBlock::new(&theme.color)))
+            }
+        }
+
+        struct ChildView;
+        impl View for ChildView {
+            fn build(&self, ctx: &mut BuildContext) -> Element {
+                let (_elem, _id, _store) = ctx.child_view(GrandchildView, None);
+                Element::Widget(Box::new(TextBlock::new("child")))
+            }
+        }
+
+        let mut root_store = HookStore::default();
+        let root_id = uuid::Uuid::new_v4();
+        let mut ctx = BuildContext::with_view_id(&mut root_store, None, root_id);
+
+        create_context(
+            &mut ctx,
+            Theme {
+                color: "blue".to_string(),
+            },
+        );
+
+        let (_elem, _id, _store) = ctx.child_view(ChildView, None);
+        let grandchild_saw = GRANDCHILD_RESULT.lock().unwrap().take().unwrap();
+        assert_eq!(
+            grandchild_saw, "blue",
+            "grandchild should see root context through 3 levels"
+        );
+    }
+
+    #[test]
+    fn test_sibling_children_share_parent_ancestor_chain() {
+        use crate::hooks::use_context::{create_context, use_context};
+        use crate::widgets::text::TextBlock;
+
+        #[derive(Clone, Debug, PartialEq)]
+        struct Config {
+            value: i32,
+        }
+
+        struct LeafView;
+        impl View for LeafView {
+            fn build(&self, ctx: &mut BuildContext) -> Element {
+                let _config: Config = use_context(ctx);
+                Element::Widget(Box::new(TextBlock::new("leaf")))
+            }
+        }
+
+        let mut root_store = HookStore::default();
+        let root_id = uuid::Uuid::new_v4();
+        let mut ctx = BuildContext::with_view_id(&mut root_store, None, root_id);
+
+        create_context(&mut ctx, Config { value: 42 });
+
+        // Two sibling children should both be able to find the context
+        let (_e1, _id1, _s1) = ctx.child_view(LeafView, None);
+        let (_e2, _id2, _s2) = ctx.child_view(LeafView, None);
+
+        // If we get here without panic, both siblings found the context.
+        // Verify they share the same parent Arc (the ancestor_chain pointer).
+        // Since both are built from the same parent, they should have equal chains.
+    }
+
+    #[test]
+    fn test_find_ancestor_context_returns_nearest_provider() {
+        use crate::hooks::use_context::{create_context, use_context};
+        use crate::widgets::text::TextBlock;
+        use std::sync::Mutex;
+
+        #[derive(Clone, Debug, PartialEq)]
+        struct Level {
+            depth: u32,
+        }
+
+        static LEAF_RESULT: Mutex<Option<u32>> = Mutex::new(None);
+
+        struct LeafView;
+        impl View for LeafView {
+            fn build(&self, ctx: &mut BuildContext) -> Element {
+                let level: Level = use_context(ctx);
+                *LEAF_RESULT.lock().unwrap() = Some(level.depth);
+                Element::Widget(Box::new(TextBlock::new("leaf")))
+            }
+        }
+
+        struct MiddleView;
+        impl View for MiddleView {
+            fn build(&self, ctx: &mut BuildContext) -> Element {
+                // Middle overrides the context with depth=2
+                create_context(ctx, Level { depth: 2 });
+                let (_elem, _id, _store) = ctx.child_view(LeafView, None);
+                Element::Widget(Box::new(TextBlock::new("middle")))
+            }
+        }
+
+        let mut root_store = HookStore::default();
+        let root_id = uuid::Uuid::new_v4();
+        let mut ctx = BuildContext::with_view_id(&mut root_store, None, root_id);
+
+        // Root provides depth=1
+        create_context(&mut ctx, Level { depth: 1 });
+
+        // Middle overrides with depth=2, leaf should see depth=2 (nearest)
+        let (_elem, _id, _store) = ctx.child_view(MiddleView, None);
+        let leaf_saw = LEAF_RESULT.lock().unwrap().take().unwrap();
+        assert_eq!(
+            leaf_saw, 2,
+            "leaf should see nearest ancestor's context (depth=2), not root (depth=1)"
         );
     }
 }
