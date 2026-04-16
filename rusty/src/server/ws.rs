@@ -8,11 +8,12 @@ use axum::{
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use uuid::Uuid;
 
-use crate::core::reconciler::Reconciler;
-use crate::core::runtime::{Runtime, RuntimeMessage};
+use crate::core::runtime::RuntimeMessage;
 use crate::views::view::View;
+
+use super::session::AppSessionStore;
 
 /// Messages sent from client to server.
 #[derive(Debug, Serialize, Deserialize)]
@@ -48,7 +49,7 @@ pub enum ServerMessage {
 
 /// Application state shared across WebSocket connections.
 pub struct AppState {
-    pub runtime: Arc<RwLock<Runtime>>,
+    pub session_store: AppSessionStore,
 }
 
 /// The Rusty WebSocket server for frontend communication.
@@ -71,10 +72,9 @@ impl RustyServer {
 
     /// Build the axum router with WebSocket support.
     pub fn router(self) -> Router {
-        let runtime = Runtime::new(FuncView((self.root_view)()));
-        let state = Arc::new(AppState {
-            runtime: Arc::new(RwLock::new(runtime)),
-        });
+        let root_factory: Arc<dyn Fn() -> Box<dyn View> + Send + Sync> = Arc::from(self.root_view);
+        let session_store = AppSessionStore::new(root_factory);
+        let state = Arc::new(AppState { session_store });
 
         Router::new()
             .route("/ws", get(ws_handler))
@@ -94,7 +94,7 @@ impl RustyServer {
 }
 
 /// Wrapper to make a boxed View usable.
-struct FuncView(Box<dyn View>);
+pub struct FuncView(pub Box<dyn View>);
 
 impl View for FuncView {
     fn build(&self, ctx: &mut crate::views::view::BuildContext) -> crate::views::view::Element {
@@ -116,23 +116,27 @@ async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) ->
 
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     let (mut sender, mut receiver) = socket.split();
-    let mut reconciler = Reconciler::new();
 
-    // Send initial render
-    let runtime = state.runtime.read().await;
-    if let Some(tree) = runtime.current_tree().await {
+    // Generate a unique connection ID and create an isolated session
+    let connection_id = Uuid::new_v4().to_string();
+    let mut session = state
+        .session_store
+        .create_session(connection_id.clone())
+        .await;
+
+    // Send initial render from this session's own runtime
+    if let Some(tree) = session.runtime.current_tree().await {
         let msg = ServerMessage::Refresh {
             widgets: tree.clone(),
         };
-        reconciler.reconcile(&tree);
+        session.reconciler.reconcile(&tree);
         if let Ok(json) = serde_json::to_string(&msg) {
             let _ = sender.send(Message::Text(json.into())).await;
         }
     }
-    let event_tx = runtime.event_sender();
-    drop(runtime);
+    let event_tx = session.runtime.event_sender();
 
-    // Process incoming messages
+    // Process incoming messages using this session's isolated runtime
     while let Some(Ok(msg)) = receiver.next().await {
         if let Message::Text(text) = msg {
             if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
@@ -150,10 +154,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             })
                             .await;
 
-                        // After event, get updated tree and send diff
-                        let runtime = state.runtime.read().await;
-                        if let Some(tree) = runtime.current_tree().await {
-                            if let Some(patches) = reconciler.reconcile(&tree) {
+                        // After event, get updated tree from this session's runtime
+                        if let Some(tree) = session.runtime.current_tree().await {
+                            if let Some(patches) = session.reconciler.reconcile(&tree) {
                                 if !patches.is_empty() {
                                     let msg = ServerMessage::Update { patches };
                                     if let Ok(json) = serde_json::to_string(&msg) {
@@ -170,4 +173,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             }
         }
     }
+
+    // Clean up session on disconnect
+    state.session_store.remove_session(&connection_id).await;
 }
