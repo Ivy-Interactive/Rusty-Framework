@@ -1,0 +1,129 @@
+import React, { useMemo, useRef, useState } from "react";
+import * as arrow from "apache-arrow";
+import { Filter } from "@/services/grpcTableService";
+import { Densities } from "@/types/density";
+import { TableContext } from "./tableContext";
+import { TableProviderProps, TableContextType } from "./types";
+import {
+  useDataLoading,
+  useColumnManagement,
+  useSorting,
+  useRowData,
+  useCellUpdates,
+} from "./hooks";
+
+export const TableProvider: React.FC<TableProviderProps> = ({
+  children,
+  columns: columnsProp,
+  connection,
+  config,
+  editable = false,
+  density = Densities.Medium,
+  updateStream,
+}) => {
+  const [visibleRows, setVisibleRows] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<Filter | null>(null);
+
+  const arrowTableRef = useRef<arrow.Table | null>(null);
+  const { allowColumnResizing, allowSorting } = config;
+
+  // Column management
+  const {
+    columns,
+    setColumns,
+    columnWidths,
+    columnOrder,
+    initializeColumnOrder,
+    initializeColumnWidths,
+    handleColumnResize,
+    handleColumnReorder,
+  } = useColumnManagement({
+    columnsProp,
+    allowColumnResizing: allowColumnResizing ?? true,
+  });
+
+  // Sorting
+  const { activeSort, handleSort, initializeSortFromColumns } = useSorting({
+    allowSorting: allowSorting ?? true,
+  });
+
+  // Data loading
+  const { isLoading, hasMore, loadMoreData } = useDataLoading({
+    connection,
+    config,
+    columnsProp,
+    activeFilter,
+    activeSort,
+    columnOrderLength: columnOrder.length,
+    arrowTableRef,
+    setColumns,
+    setVisibleRows,
+    setError,
+    initializeColumnOrder,
+    initializeColumnWidths,
+    initializeSortFromColumns,
+  });
+
+  // Row data accessor
+  const { getRowData: getBaseRowData } = useRowData(arrowTableRef);
+
+  // Cell update stream overrides
+  const { getRowData } = useCellUpdates({
+    streamId: updateStream?.id,
+    columns,
+    idColumnName: config.idColumnName,
+    getBaseRowData,
+  });
+
+  const value: TableContextType = useMemo(() => {
+    const contextValue: TableContextType = {
+      columns,
+      columnWidths,
+      visibleRows,
+      isLoading,
+      hasMore,
+      error,
+      editable,
+      connection,
+      config,
+      activeFilter,
+      activeSort,
+      columnOrder,
+      density,
+      getRowData,
+      arrowTableRef,
+      loadMoreData,
+      handleColumnResize,
+      handleSort,
+      setActiveFilter,
+      setError,
+      handleColumnReorder,
+    };
+    return contextValue;
+  }, [
+    columns,
+    columnWidths,
+    visibleRows,
+    isLoading,
+    hasMore,
+    error,
+    editable,
+    connection,
+    config,
+    activeFilter,
+    activeSort,
+    columnOrder,
+    density,
+    getRowData,
+    arrowTableRef,
+    loadMoreData,
+    handleColumnResize,
+    handleSort,
+    setActiveFilter,
+    setError,
+    handleColumnReorder,
+  ]);
+
+  return <TableContext.Provider value={value}>{children}</TableContext.Provider>;
+};

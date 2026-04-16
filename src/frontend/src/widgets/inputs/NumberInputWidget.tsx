@@ -1,0 +1,466 @@
+import React, { memo, useCallback, useMemo } from "react";
+import { useOptimisticValue } from "./shared/useOptimisticValue";
+import { useEventHandler, EventHandler } from "@/components/event-handler";
+import NumberInput from "@/components/NumberInput";
+import { Slider } from "@/components/ui/slider";
+import { cn } from "@/lib/utils";
+import { inputStyles, getWidth } from "@/lib/styles";
+import { InvalidIcon } from "@/components/InvalidIcon";
+import { X } from "lucide-react";
+import { Densities } from "@/types/density";
+import { xIconVariant } from "@/components/ui/input/text-input-variant";
+import { formatBytes } from "@/lib/formatters";
+import { EMPTY_ARRAY } from "@/lib/constants";
+
+const formatStyleMap = {
+  Decimal: "decimal",
+  Currency: "currency",
+  Percent: "percent",
+  Compact: "compact",
+  Scientific: "scientific",
+  Engineering: "engineering",
+  Accounting: "accounting",
+  Bytes: "bytes",
+} as const;
+
+type FormatStyle = keyof typeof formatStyleMap;
+
+// Type limits for validation
+export const TYPE_LIMITS = {
+  byte: { min: 0, max: 255 },
+  sbyte: { min: -128, max: 127 },
+  short: { min: -32768, max: 32767 },
+  ushort: { min: 0, max: 65535 },
+  int: { min: -2147483648, max: 2147483647 },
+  uint: { min: 0, max: 4294967295 },
+  long: { min: Number.MIN_SAFE_INTEGER, max: Number.MAX_SAFE_INTEGER },
+  ulong: { min: 0, max: Number.MAX_SAFE_INTEGER },
+  float: { min: -999999999999.99, max: 999999999999.99 },
+  double: { min: -999999999999.99, max: 999999999999.99 },
+  decimal: { min: -999999999999.99, max: 999999999999.99 },
+} as const;
+
+interface NumberInputBaseProps {
+  id: string;
+  placeholder?: string;
+  value: number | null;
+  formatStyle?: FormatStyle;
+  min?: number;
+  max?: number;
+  step?: number;
+  precision?: number;
+  disabled?: boolean;
+  invalid?: string;
+  nullable?: boolean;
+  onValueChange: (value: number | null) => void;
+  onBlur?: (e: React.FocusEvent) => void;
+  onFocus?: (e: React.FocusEvent) => void;
+  currency?: string | undefined;
+  "data-testid"?: string;
+  // Add type information for validation
+  targetType?: string;
+  density?: Densities;
+  noGrouping?: boolean;
+  autoFocus?: boolean;
+  events?: string[];
+  slots?: { Prefix?: React.ReactNode[]; Suffix?: React.ReactNode[] };
+}
+
+interface NumberInputWidgetProps extends Omit<NumberInputBaseProps, "onValueChange"> {
+  variant?: "Number" | "Slider";
+  targetType?: string;
+  width?: string;
+  autoFocus?: boolean;
+  slots?: { Prefix?: React.ReactNode[]; Suffix?: React.ReactNode[] };
+}
+
+// Function to validate and cap values based on target type
+export const validateAndCapValue = (value: number | null, targetType?: string): number | null => {
+  if (value === null) return null;
+  if (!targetType) return value;
+
+  const limits = TYPE_LIMITS[targetType as keyof typeof TYPE_LIMITS];
+  if (!limits) return value;
+
+  // Cap the value to the type limits
+  const cappedValue = Math.min(Math.max(value, limits.min), limits.max);
+
+  // For integer types, ensure we don't send fractional values
+  if (["byte", "sbyte", "short", "ushort", "int", "uint", "long", "ulong"].includes(targetType)) {
+    return Math.floor(cappedValue);
+  }
+
+  return cappedValue;
+};
+
+// Size variants for text styling
+const sizeVariant: Record<string, { text: string }> = {
+  Small: {
+    text: "text-xs",
+  },
+  Medium: {
+    text: "text-sm font-normal",
+  },
+  Large: {
+    text: "text-ml font-medium",
+  },
+};
+
+const SliderVariant = memo(
+  ({
+    value,
+    min = 0,
+    max = 100,
+    step = 1,
+    disabled = false,
+    invalid,
+    currency,
+    formatStyle,
+    density = Densities.Medium,
+    onValueChange,
+    onBlur,
+    onFocus,
+    slots,
+    "data-testid": dataTestId,
+  }: NumberInputBaseProps) => {
+    const isBytesFormat = formatStyle === "Bytes";
+
+    // Maintains local state for quick slider updates, syncs when value changes from outside
+    const [localValue, setLocalValue] = useOptimisticValue(value, false);
+
+    // Only update local state on drag
+    const handleSliderChange = useCallback(
+      (values: number[]) => {
+        const newValue = values[0];
+        if (typeof newValue === "number") {
+          setLocalValue(newValue);
+        }
+      },
+      [setLocalValue],
+    );
+
+    // Only call onValueChange (eventHandler) when drag ends
+    const handleSliderCommit = useCallback(
+      (values: number[]) => {
+        const newValue = values[0];
+        if (typeof newValue === "number") {
+          onValueChange(newValue);
+        }
+      },
+      [onValueChange],
+    );
+
+    // For slider, we need a numeric value - use 0 as fallback for null
+    const sliderValue = localValue ?? 0;
+
+    const formattedMin = useMemo(
+      () => (isBytesFormat ? formatBytes(min, 0) : min),
+      [min, isBytesFormat],
+    );
+    const formattedMax = useMemo(
+      () => (isBytesFormat ? formatBytes(max, 0) : max),
+      [max, isBytesFormat],
+    );
+
+    const prefixContent = slots?.Prefix;
+    const suffixContent = slots?.Suffix;
+    const hasPrefix = (prefixContent?.length ?? 0) > 0;
+    const hasSuffix = (suffixContent?.length ?? 0) > 0;
+    const hasSlots = hasPrefix || hasSuffix;
+
+    const sliderContent = (
+      <div className="relative w-full flex-1 flex flex-col gap-1 pt-6 pb-2 my-auto justify-center">
+        <Slider
+          min={min}
+          max={max}
+          step={step}
+          value={[sliderValue]}
+          disabled={disabled}
+          currency={currency}
+          isBytesFormat={isBytesFormat}
+          density={density}
+          onValueChange={handleSliderChange}
+          onValueCommit={handleSliderCommit}
+          onBlur={onBlur}
+          onFocus={onFocus}
+          className={cn(invalid && inputStyles.invalidInput)}
+          data-testid={dataTestId}
+        />
+        <span
+          className={cn(
+            "flex w-full items-center justify-between gap-1",
+            sizeVariant[String(density)].text,
+          )}
+          aria-hidden="true"
+        >
+          {min !== undefined && max !== undefined && (
+            <>
+              <span>{formattedMin}</span>
+              <span>{formattedMax}</span>
+            </>
+          )}
+        </span>
+        {invalid && (
+          <div className="absolute right-2.5 translate-y-1/2 -top-1.5">
+            <InvalidIcon message={invalid} />
+          </div>
+        )}
+      </div>
+    );
+
+    if (!hasSlots) {
+      return sliderContent;
+    }
+
+    return (
+      <div
+        className={cn(
+          "flex items-stretch w-full flex-1 rounded-field border border-input bg-transparent shadow-sm dark:bg-white/5 dark:border-white/10",
+          disabled && "cursor-not-allowed opacity-50",
+        )}
+      >
+        {hasPrefix && (
+          <div className="flex items-center px-3 bg-muted text-muted-foreground border-r border-input rounded-tl-[var(--radius-fields)] rounded-bl-[var(--radius-fields)]">
+            {prefixContent}
+          </div>
+        )}
+        <div className="flex-1 px-3">{sliderContent}</div>
+        {hasSuffix && (
+          <div className="flex items-center px-3 bg-muted text-muted-foreground border-l border-input rounded-tr-[var(--radius-fields)] rounded-br-[var(--radius-fields)]">
+            {suffixContent}
+          </div>
+        )}
+      </div>
+    );
+  },
+);
+
+SliderVariant.displayName = "SliderVariant";
+
+const NumberVariant = memo(
+  ({
+    placeholder = "",
+    value,
+    min,
+    max,
+    step = 1,
+    formatStyle = "Decimal",
+    precision = 2,
+    disabled = false,
+    invalid,
+    nullable = false,
+    onValueChange,
+    onBlur,
+    onFocus,
+    currency,
+    density = Densities.Medium,
+    slots,
+    noGrouping,
+    autoFocus,
+    "data-testid": dataTestId,
+  }: NumberInputBaseProps) => {
+    const isBytesFormat = formatStyle === "Bytes";
+
+    const formatConfig = useMemo(() => {
+      const config: Intl.NumberFormatOptions = {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: precision,
+        useGrouping: !(noGrouping ?? false),
+      };
+
+      if (formatStyle === "Compact") {
+        config.notation = "compact";
+        config.compactDisplay = "short";
+      } else if (formatStyle === "Scientific") {
+        config.notation = "scientific";
+      } else if (formatStyle === "Engineering") {
+        config.notation = "engineering";
+      } else if (formatStyle === "Accounting") {
+        config.style = "currency";
+        config.currencySign = "accounting";
+        config.currency = currency || "USD";
+      } else if (formatStyle === "Bytes") {
+        config.style = "decimal";
+      } else {
+        config.style = formatStyleMap[formatStyle] as Intl.NumberFormatOptions["style"];
+        config.notation = "standard";
+        if (formatStyle === "Currency") {
+          config.currency = currency || "USD";
+        }
+      }
+
+      return config;
+    }, [currency, formatStyle, precision, noGrouping]);
+
+    const handleNumberChange = useCallback(
+      (newValue: number | null) => {
+        // If not nullable and value is null, convert to 0
+        if (!nullable && newValue === null) {
+          onValueChange(0);
+        } else {
+          onValueChange(newValue);
+        }
+      },
+      [onValueChange, nullable],
+    );
+
+    const prefixContent = slots?.Prefix;
+    const suffixContent = slots?.Suffix;
+    const hasPrefix = (prefixContent?.length ?? 0) > 0;
+    const hasSuffix = (suffixContent?.length ?? 0) > 0;
+
+    return (
+      <div
+        className={cn(
+          "relative flex items-stretch w-full flex-1 rounded-field border border-input bg-transparent shadow-sm dark:bg-white/5 dark:border-white/10",
+          disabled && "cursor-not-allowed opacity-50",
+        )}
+      >
+        {/* Prefix with background and separator */}
+        {hasPrefix && (
+          <div className="flex items-center px-3 bg-muted text-muted-foreground border-r border-input rounded-tl-[var(--radius-fields)] rounded-bl-[var(--radius-fields)]">
+            {prefixContent}
+          </div>
+        )}
+
+        <div className="relative flex-1">
+          <NumberInput
+            min={min}
+            max={max}
+            step={step}
+            format={formatConfig}
+            isBytesFormat={isBytesFormat}
+            placeholder={placeholder}
+            value={value ?? (nullable ? null : 0)}
+            disabled={disabled}
+            density={density}
+            autoFocus={autoFocus}
+            onChange={handleNumberChange}
+            onBlur={onBlur}
+            onFocus={onFocus}
+            className={cn(
+              "border-0 shadow-none",
+              invalid && inputStyles.invalidInput,
+              (invalid || (nullable && value !== null && !disabled)) && "pr-8",
+              nullable && value !== null && !disabled && invalid && "pr-16",
+              hasPrefix && "rounded-l-none",
+              hasSuffix && "rounded-r-none",
+            )}
+            data-testid={dataTestId}
+          />
+          {/* Icon container - flex row aligned to right */}
+          {((nullable && value !== null && !disabled) || invalid) && (
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-row items-center gap-1">
+              {/* Clear (X) button - leftmost */}
+              {nullable && value !== null && !disabled && (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  aria-label="Clear"
+                  onClick={() => onValueChange(null)}
+                  className="p-1 rounded hover:bg-accent focus:outline-none cursor-pointer"
+                >
+                  <X className={xIconVariant({ density })} />
+                </button>
+              )}
+              {/* Invalid icon - rightmost */}
+              {invalid && <InvalidIcon message={invalid} className="pointer-events-auto" />}
+            </div>
+          )}
+        </div>
+
+        {/* Suffix with background and separator */}
+        {hasSuffix && (
+          <div className="flex items-center px-3 bg-muted text-muted-foreground border-l border-input rounded-tr-[var(--radius-fields)] rounded-br-[var(--radius-fields)]">
+            {suffixContent}
+          </div>
+        )}
+      </div>
+    );
+  },
+);
+
+NumberVariant.displayName = "NumberVariant";
+
+export const NumberInputWidget = memo(
+  ({
+    id,
+    variant = "Number",
+    formatStyle = "Decimal",
+    nullable = false,
+    width,
+    events = EMPTY_ARRAY,
+    ...props
+  }: NumberInputWidgetProps) => {
+    const eventHandler = useEventHandler() as EventHandler;
+
+    // Normalize undefined to null when nullable
+    const normalizedValue = nullable && props.value === undefined ? null : props.value;
+
+    const [localValue, setLocalValue] = useOptimisticValue(normalizedValue, false);
+
+    const handleBlur = useCallback(() => {
+      if (events.includes("OnBlur")) eventHandler("OnBlur", id, []);
+    }, [eventHandler, id, events]);
+
+    const handleFocus = useCallback(() => {
+      if (events.includes("OnFocus")) eventHandler("OnFocus", id, []);
+    }, [eventHandler, id, events]);
+
+    const handleChange = useCallback(
+      (newValue: number | null) => {
+        // Apply bounds only if value is not null
+        if (newValue !== null) {
+          // First apply component-level bounds (min/max props) only when provided
+          let boundedValue = newValue;
+          if (props.min !== undefined) {
+            boundedValue = Math.max(boundedValue, props.min);
+          }
+          if (props.max !== undefined) {
+            boundedValue = Math.min(boundedValue, props.max);
+          }
+
+          // Then apply type-level validation to prevent overflow
+          const validatedValue = validateAndCapValue(boundedValue, props.targetType);
+
+          setLocalValue(validatedValue);
+          if (events.includes("OnChange")) eventHandler("OnChange", id, [validatedValue]);
+        } else {
+          // Pass null directly for nullable inputs
+          setLocalValue(newValue);
+          if (events.includes("OnChange")) eventHandler("OnChange", id, [newValue]);
+        }
+      },
+      [eventHandler, id, props.min, props.max, props.targetType, setLocalValue, events],
+    );
+
+    return (
+      <div className="w-full flex-1" style={{ ...getWidth(width) }}>
+        {variant === "Slider" ? (
+          <SliderVariant
+            id={id}
+            {...props}
+            formatStyle={formatStyle}
+            value={localValue}
+            onValueChange={handleChange}
+            onBlur={handleBlur}
+            onFocus={handleFocus}
+          />
+        ) : (
+          <NumberVariant
+            id={id}
+            {...props}
+            formatStyle={formatStyle}
+            value={localValue}
+            nullable={nullable}
+            onValueChange={handleChange}
+            onBlur={handleBlur}
+            onFocus={handleFocus}
+          />
+        )}
+      </div>
+    );
+  },
+);
+
+NumberInputWidget.displayName = "NumberInputWidget";

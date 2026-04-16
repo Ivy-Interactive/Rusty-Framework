@@ -1,0 +1,181 @@
+import React from "react";
+import DataEditor, {
+  CustomRenderer,
+  DataEditorRef,
+  GridCell,
+  GridColumn,
+  GridMouseEventArgs,
+  GridSelection,
+  GroupHeaderClickedEventArgs,
+  Highlight,
+  Item,
+  SpriteMap,
+  Theme,
+} from "@glideapps/glide-data-grid";
+import { tableStyles } from "../styles/style";
+import { RowActionButtons } from "../dataTableRowAction/rowActionButtons";
+import { MenuItem } from "@/types/widgets";
+
+interface GridContainerProps {
+  gridRef: React.RefObject<DataEditorRef | null>;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  hasOptions: boolean;
+  columns: GridColumn[];
+  rows: number;
+  getCellContent: (cell: Item) => GridCell;
+  customRenderers: readonly CustomRenderer[];
+  headerIcons: SpriteMap;
+  onColumnResize?: (column: GridColumn, newSize: number) => void;
+  onVisibleRegionChanged: (range: { x: number; y: number; width: number; height: number }) => void;
+  onHeaderClicked?: (col: number) => void;
+  theme: Partial<Theme> | undefined;
+  rowHeight: number;
+  headerHeight: number;
+  freezeColumns: number;
+  getCellsForSelection: true | undefined;
+  rowSelect: "none" | "multi" | "single";
+  columnSelect: "none" | "multi" | "single";
+  rangeSelect: "none" | "cell" | "rect" | "multi-cell" | "multi-rect";
+  gridSelection: GridSelection;
+  onGridSelectionChange: (newSelection: GridSelection) => void;
+  rowMarkers: "number" | "checkbox" | "both" | "none";
+  onColumnMoved?: (startIndex: number, endIndex: number) => void;
+  groupHeaderHeight?: number;
+  onCellClicked: (cell: Item, args: GridMouseEventArgs) => void;
+  onCellActivated: (cell: Item) => void;
+  onGroupHeaderClicked?: (colIndex: number, event: GroupHeaderClickedEventArgs) => void;
+  showSearch: boolean;
+  onSearchClose: () => void;
+  onSearchResultsChanged?: (results: readonly Item[], navIndex: number) => void;
+  highlightRegions?: readonly Highlight[];
+  onItemHovered?: (args: GridMouseEventArgs) => void;
+  getRowThemeOverride?: ((row: number) => Partial<Theme> | undefined) | undefined;
+  rowActions?: MenuItem[];
+  actionButtonsTop: number;
+  actionButtonsHeight: number;
+  hoverRow: number | undefined;
+  onRowActionClick: (action: MenuItem) => void;
+  footer?: React.ReactNode;
+  height?: number;
+  hasEmptyRows?: boolean;
+}
+
+/**
+ * Container component that wraps the DataEditor grid and manages overlays
+ */
+export const GridContainer: React.FC<GridContainerProps> = ({
+  gridRef,
+  containerRef,
+  hasOptions,
+  columns,
+  rows,
+  getCellContent,
+  customRenderers,
+  headerIcons,
+  onColumnResize,
+  onVisibleRegionChanged,
+  onHeaderClicked,
+  theme,
+  rowHeight,
+  headerHeight,
+  freezeColumns,
+  getCellsForSelection,
+  rowSelect,
+  columnSelect,
+  rangeSelect,
+  gridSelection,
+  onGridSelectionChange,
+  rowMarkers,
+  onColumnMoved,
+  groupHeaderHeight,
+  onCellClicked,
+  onCellActivated,
+  onGroupHeaderClicked,
+  showSearch,
+  onSearchClose,
+  onSearchResultsChanged,
+  highlightRegions,
+  onItemHovered,
+  getRowThemeOverride,
+  rowActions,
+  actionButtonsTop,
+  actionButtonsHeight,
+  hoverRow,
+  onRowActionClick,
+  footer,
+  height,
+  hasEmptyRows = false,
+}) => {
+  const containerStyle = hasOptions
+    ? tableStyles.tableEditor.gridContainerWithOptions
+    : tableStyles.tableEditor.gridContainer;
+
+  return (
+    <div
+      style={{
+        ...containerStyle,
+        display: "flex",
+        flexDirection: "column",
+        position: "relative",
+        overflow: "hidden",
+      }}
+      data-has-empty-rows={hasEmptyRows || undefined}
+    >
+      <div
+        ref={containerRef}
+        style={{ flex: 1, minHeight: 0, overflow: "hidden", position: "relative" }}
+      >
+        <DataEditor
+          ref={gridRef}
+          width="100%"
+          columns={columns}
+          rows={rows}
+          getCellContent={getCellContent}
+          customRenderers={customRenderers}
+          headerIcons={headerIcons}
+          onColumnResize={onColumnResize}
+          onVisibleRegionChanged={onVisibleRegionChanged}
+          onHeaderClicked={onHeaderClicked}
+          smoothScrollX={true}
+          smoothScrollY={true}
+          theme={theme}
+          rowHeight={rowHeight}
+          headerHeight={headerHeight}
+          freezeColumns={freezeColumns}
+          getCellsForSelection={getCellsForSelection}
+          keybindings={{ search: false }}
+          rowSelect={rowSelect}
+          columnSelect={columnSelect}
+          rangeSelect={rangeSelect}
+          gridSelection={gridSelection}
+          onGridSelectionChange={onGridSelectionChange}
+          height={height}
+          rowMarkers={rowMarkers}
+          onColumnMoved={onColumnMoved}
+          groupHeaderHeight={groupHeaderHeight}
+          cellActivationBehavior="double-click"
+          onCellClicked={onCellClicked}
+          onCellActivated={onCellActivated}
+          onGroupHeaderClicked={onGroupHeaderClicked}
+          showSearch={showSearch}
+          onSearchClose={onSearchClose}
+          onSearchResultsChanged={onSearchResultsChanged}
+          highlightRegions={highlightRegions}
+          onItemHovered={onItemHovered}
+          getRowThemeOverride={getRowThemeOverride}
+        />
+
+        {rowActions && rowActions.length > 0 && (
+          <RowActionButtons
+            actions={rowActions}
+            top={actionButtonsTop}
+            height={actionButtonsHeight}
+            visible={hoverRow !== undefined}
+            onActionClick={onRowActionClick}
+          />
+        )}
+      </div>
+      {footer}
+    </div>
+  );
+};

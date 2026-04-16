@@ -1,0 +1,123 @@
+import React, { useEffect, useRef, useCallback, useMemo } from "react";
+import confetti from "canvas-confetti";
+
+interface ConfettiWidgetProps {
+  children: React.ReactNode;
+  trigger?: "Auto" | "Click" | "Hover";
+}
+
+const ConfettiWidget: React.FC<ConfettiWidgetProps> = ({ children, trigger = "Auto" }) => {
+  const elementRef = useRef<HTMLDivElement>(null);
+
+  const quadrant = useMemo(
+    () =>
+      confetti.shapeFromPath({
+        path: "M47 0H0V47.0222C25.9234 47.0222 47 25.9801 47 0Z",
+      }),
+    [],
+  );
+
+  const colors = useMemo(() => {
+    if (typeof document === "undefined") return ["#00CC92", "#0D4A2F"];
+    const emerald = getComputedStyle(document.documentElement).getPropertyValue("--emerald").trim();
+    if (!emerald) return ["#00CC92", "#0D4A2F"];
+    const darken = (hex: string): string => {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      const f = 0.4;
+      return `#${Math.round(r * f)
+        .toString(16)
+        .padStart(2, "0")}${Math.round(g * f)
+        .toString(16)
+        .padStart(2, "0")}${Math.round(b * f)
+        .toString(16)
+        .padStart(2, "0")}`;
+    };
+    return [emerald, darken(emerald)];
+  }, []);
+
+  const confettiConfig = useMemo(
+    () => ({
+      particleCount: 75,
+      spread: 70,
+      ticks: 133,
+      shapes: [quadrant],
+      colors,
+    }),
+    [quadrant, colors],
+  );
+
+  const triggerConfetti = useCallback(
+    (x: number, y: number) => {
+      confetti({
+        ...confettiConfig,
+        origin: { x, y },
+      });
+    },
+    [confettiConfig],
+  );
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (trigger !== "Click") return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (rect.left + rect.width / 2) / window.innerWidth;
+    const y = (rect.top + rect.height / 2) / window.innerHeight;
+    triggerConfetti(x, y);
+  };
+
+  const handleMouseEnter = (e: React.MouseEvent) => {
+    if (trigger !== "Hover") return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (rect.left + rect.width / 2) / window.innerWidth;
+    const y = (rect.top + rect.height / 2) / window.innerHeight;
+    triggerConfetti(x, y);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (trigger === "Click" && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      const rect = elementRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const x = (rect.left + rect.width / 2) / window.innerWidth;
+      const y = (rect.top + rect.height / 2) / window.innerHeight;
+      triggerConfetti(x, y);
+    }
+  };
+
+  useEffect(() => {
+    if (trigger === "Auto" && elementRef.current) {
+      const rect = elementRef.current.getBoundingClientRect();
+      const x = (rect.left + rect.width / 2) / window.innerWidth;
+      const y = (rect.top + rect.height / 2) / window.innerHeight;
+      confetti({
+        ...confettiConfig,
+        origin: { x, y },
+      });
+    }
+  }, [trigger, confettiConfig]);
+
+  if (trigger === "Click") {
+    return (
+      <div
+        ref={elementRef}
+        onClick={handleClick}
+        onMouseEnter={handleMouseEnter}
+        role="button"
+        aria-label="Trigger confetti"
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+      >
+        {children}
+      </div>
+    );
+  }
+
+  return (
+    <div ref={elementRef} onMouseEnter={handleMouseEnter} role="presentation">
+      {children}
+    </div>
+  );
+};
+
+export default ConfettiWidget;

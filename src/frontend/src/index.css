@@ -1,0 +1,434 @@
+@import "tailwindcss";
+@import "@ivy-interactive/ivy-design-system/css/fonts";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-scheme: light;
+}
+
+/* Hardcoded CSS variables removed - now using Ivy Design System flat CSS imports above */
+
+/* Custom element for widget inspector */
+ivy-widget {
+  display: contents;
+}
+
+/* Additional theme customization variables */
+@layer base {
+  :root {
+    /* Fonts */
+    --font-sans: "Geist";
+    --font-serif: "Geist";
+    --font-mono: "Geist Mono";
+
+    /* Additional variables not in design system yet */
+    --toolbox: #38363a;
+    --spacing: 0.27rem;
+    --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.03);
+    --shadow-xs: 0 1px 2px 0 hsl(0 0% 0% / 0.03);
+    --shadow: 0 1px 3px 0 hsl(0 0% 0% / 0.05);
+    --shadow-xl: 0 6px 10px 0 hsl(0 0% 0% / 0.05);
+    --shadow-2xl: 0 8px 14px 0 hsl(0 0% 0% / 0.08);
+  }
+
+  .dark {
+    /* Additional dark theme overrides not in design system yet */
+    --toolbox: #edeaf1;
+    --shadow-2xs: none;
+    --shadow-xs: none;
+    --shadow: none;
+    --shadow-xl: none;
+    --shadow-2xl: none;
+  }
+
+  @theme inline {
+    /* Semantic color mappings for Tailwind utility classes */
+    /* These reference CSS variables injected by the backend */
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-success: var(--success);
+    --color-success-foreground: var(--success-foreground);
+    --color-warning: var(--warning);
+    --color-warning-foreground: var(--warning-foreground);
+    --color-info: var(--info);
+    --color-info-foreground: var(--info-foreground);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --ivy-green: #00cc92;
+    --ivy-green-foreground: #ffffff;
+    --color-ivy-green: var(--ivy-green);
+    --color-ivy-green-foreground: var(--ivy-green-foreground);
+
+    /* Neutral colors - reference CSS variables injected by the backend */
+    --color-black: var(--black);
+    --color-black-foreground: var(--black-foreground);
+    --color-white: var(--white);
+    --color-white-foreground: var(--white-foreground);
+    --color-slate: var(--slate);
+    --color-slate-foreground: var(--slate-foreground);
+    --color-gray: var(--gray);
+    --color-gray-foreground: var(--gray-foreground);
+    --color-zinc: var(--zinc);
+    --color-zinc-foreground: var(--zinc-foreground);
+    --color-neutral: var(--neutral);
+    --color-neutral-foreground: var(--neutral-foreground);
+    --color-stone: var(--stone);
+    --color-stone-foreground: var(--stone-foreground);
+
+    /* Chromatic colors - reference CSS variables injected by the backend */
+    --color-red: var(--red);
+    --color-red-foreground: var(--red-foreground);
+    --color-orange: var(--orange);
+    --color-orange-foreground: var(--orange-foreground);
+    --color-amber: var(--amber);
+    --color-amber-foreground: var(--amber-foreground);
+    --color-yellow: var(--yellow);
+    --color-yellow-foreground: var(--yellow-foreground);
+    --color-lime: var(--lime);
+    --color-lime-foreground: var(--lime-foreground);
+    --color-green: var(--green);
+    --color-green-foreground: var(--green-foreground);
+    --color-emerald: var(--emerald);
+    --color-emerald-foreground: var(--emerald-foreground);
+    --color-teal: var(--teal);
+    --color-teal-foreground: var(--teal-foreground);
+    --color-cyan: var(--cyan);
+    --color-cyan-foreground: var(--cyan-foreground);
+    --color-sky: var(--sky);
+    --color-sky-foreground: var(--sky-foreground);
+    --color-blue: var(--blue);
+    --color-blue-foreground: var(--blue-foreground);
+    --color-indigo: var(--indigo);
+    --color-indigo-foreground: var(--indigo-foreground);
+    --color-violet: var(--violet);
+    --color-violet-foreground: var(--violet-foreground);
+    --color-purple: var(--purple);
+    --color-purple-foreground: var(--purple-foreground);
+    --color-fuchsia: var(--fuchsia);
+    --color-fuchsia-foreground: var(--fuchsia-foreground);
+    --color-pink: var(--pink);
+    --color-pink-foreground: var(--pink-foreground);
+    --color-rose: var(--rose);
+    --color-rose-foreground: var(--rose-foreground);
+
+    /* Typography */
+    --text-body: 14px;
+    --text-large-body: 14px;
+    --text-large-label: 14px;
+    --text-small-label: 12px;
+
+    /* Spacing */
+    --radius-boxes: var(--radius-boxes);
+    --radius-fields: var(--radius-fields);
+    --radius-selectors: var(--radius-selectors);
+    --font-family-sans: var(--font-sans);
+    --font-family-mono: var(--font-mono);
+    --font-family-serif: var(--font-serif);
+    --shadow-2xs: var(--shadow-2xs);
+    --shadow-xs: var(--shadow-xs);
+    --shadow-sm: var(--shadow-sm);
+    --shadow: var(--shadow);
+    --shadow-md: var(--shadow-md);
+    --shadow-lg: var(--shadow-lg);
+    --shadow-xl: var(--shadow-xl);
+    --shadow-2xl: var(--shadow-2xl);
+    --tracking-tighter: calc(var(--tracking-normal) - 0.05em);
+    --tracking-tight: calc(var(--tracking-normal) - 0.025em);
+    --tracking-normal: var(--tracking-normal);
+    --tracking-wide: calc(var(--tracking-normal) + 0.025em);
+    --tracking-wider: calc(var(--tracking-normal) + 0.05em);
+    --tracking-widest: calc(var(--tracking-normal) + 0.1em);
+  }
+
+  body {
+    font-family: var(--font-sans);
+  }
+
+  /* Ensure sidebar icons and logo use primary brand color */
+  [data-sidebar="sidebar"] .text-primary {
+    color: var(--ivy-green) !important;
+  }
+
+  [data-sidebar="sidebar"] svg[fill="currentColor"] {
+    color: var(--ivy-green);
+  }
+}
+
+@keyframes accordion-down {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+
+  to {
+    height: var(--radix-accordion-content-height, var(--radix-collapsible-content-height));
+    opacity: 1;
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height, var(--radix-collapsible-content-height));
+    opacity: 1;
+  }
+
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+
+/* Alert animation */
+@keyframes alertGrowIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.alert-animate-enter {
+  animation: alertGrowIn 200ms ease-out;
+}
+
+/* Toast animation */
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.toast-animate-enter {
+  animation: toastSlideIn 300ms ease-out;
+}
+
+/* Radix UI toast animations using data attributes */
+[data-radix-toast-root][data-state="open"] {
+  animation: toastSlideIn 300ms ease-out;
+}
+
+/* Indeterminate progress bar animation */
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-indeterminate {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
+@theme inline {
+  --animate-accordion-down: accordion-down 0.1s ease-out;
+  --animate-accordion-up: accordion-up 0.1s ease-out;
+  --animate-indeterminate: indeterminate 1.5s ease-in-out infinite;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  #root {
+    height: 100vh;
+    width: 100vw;
+    overflow: auto;
+  }
+}
+
+/* Semantic border radius utility classes */
+@layer utilities {
+  /* For large container components: Card, Sheet, Dialog, Alert, Modal */
+  .rounded-box {
+    border-radius: var(--radius-boxes);
+  }
+
+  /* For input field components: Button, Input, Textarea, Select */
+  .rounded-field {
+    border-radius: var(--radius-fields);
+  }
+
+  /* For small selector components: Toggle, Badge, Radio */
+  .rounded-selector {
+    border-radius: var(--radius-selectors);
+  }
+
+  /* For checkboxes: half of selector radius (avoids circle when selectors use 1rem) */
+  .rounded-checkbox {
+    border-radius: calc(var(--radius-selectors) / 2);
+  }
+
+  /* Semantic shadow utility classes - mirrors the border radius pattern */
+  /* For large container components: Card, Sheet, Dialog, Alert, Modal */
+  .shadow-box {
+    box-shadow: var(--shadow-boxes);
+  }
+
+  /* For input field components: Button, Input, Textarea, Select */
+  .shadow-field {
+    box-shadow: var(--shadow-fields);
+  }
+
+  /* For small selector components: Toggle, Badge, Radio */
+  .shadow-selector {
+    box-shadow: var(--shadow-selectors);
+  }
+}
+
+/* 
+  Override default padding in AppHost (and potentially other containers).
+  We need to look deep into the structure because wrappers like Ivy.Fragment 
+  or other intermediate widgets might introduce extra <ivy-widget> layers 
+  between the AppHost and the layout that requests padding removal.
+*/
+:has(> .remove-parent-padding),
+:has(> ivy-widget > .remove-parent-padding),
+:has(> ivy-widget > ivy-widget > .remove-parent-padding),
+:has(> ivy-widget > ivy-widget > ivy-widget > .remove-parent-padding),
+:has(> ivy-widget > ivy-widget > ivy-widget > ivy-widget > .remove-parent-padding) {
+  padding: 0 !important;
+}
+
+.invisible-scrollbar {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Slim scrollbar for compact inline areas (~4px) */
+.slim-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.slim-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.slim-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+.slim-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
+.slim-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* Native scrollbar styling for theme consistency */
+@layer base {
+  /* Webkit browsers (Chrome, Safari, Edge) */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-foreground);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+}
+
+/* Remove autofill background color */
+@layer base {
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px var(--background) inset !important;
+    -webkit-text-fill-color: var(--foreground) !important;
+  }
+}
+
+/* Details/Summary styling for markdown collapsible sections */
+details {
+  padding: 0 1rem 1rem 1rem;
+}
+details > summary {
+  margin: 0 -1rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+details:not([open]) {
+  padding-bottom: 0;
+}
+
+/* Prevent dialog from getting focus rings when elements inside are focused */
+@layer components {
+  [data-radix-dialog-content] {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  [data-radix-dialog-content]:focus {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  [data-radix-dialog-content]:focus-within {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+}

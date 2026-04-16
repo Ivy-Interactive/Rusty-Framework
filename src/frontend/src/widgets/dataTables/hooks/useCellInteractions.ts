@@ -1,0 +1,184 @@
+import { useCallback } from "react";
+import { GridCell, GridCellKind, GridMouseEventArgs, Item } from "@glideapps/glide-data-grid";
+import { useEventHandler } from "@/components/event-handler";
+import { validateLinkUrl, validateRedirectUrl } from "@/lib/url";
+import { DataColumn } from "../types/types";
+import { getHiddenKeyValue } from "../utils/arrowUtils";
+import * as arrow from "apache-arrow";
+
+interface UseCellInteractionsProps {
+  widgetId: string;
+  events: string[];
+  columns: DataColumn[];
+  visibleRows: number;
+  enableCellClickEvents: boolean | undefined;
+  getCellContent: (cell: Item) => GridCell;
+  arrowTableRef: React.RefObject<arrow.Table | null>;
+}
+
+/**
+ * Hook to handle cell click and activation events
+ */
+export const useCellInteractions = ({
+  widgetId,
+  events,
+  columns,
+  visibleRows,
+  enableCellClickEvents,
+  getCellContent,
+  arrowTableRef,
+}: UseCellInteractionsProps) => {
+  const eventHandler = useEventHandler();
+
+  // Handle cell single-clicks (for backend events and link navigation)
+  const handleCellClicked = useCallback(
+    (cell: Item, args: GridMouseEventArgs) => {
+      const [, row] = cell;
+      // Prevent interactions with empty filler rows
+      if (row >= visibleRows) {
+        return;
+      }
+
+      const cellContent = getCellContent(cell);
+
+      if (enableCellClickEvents ?? false) {
+        const visibleColumns = columns.filter((c) => !c.hidden);
+        const column = visibleColumns[cell[0]];
+
+        const getCellValue = (content: GridCell) => {
+          if (content.kind === "text" || content.kind === "number" || content.kind === "boolean") {
+            return content.data;
+          } else if ("data" in content) {
+            const cellData = (content as unknown as { data: unknown }).data;
+
+            if (
+              cellData &&
+              typeof cellData === "object" &&
+              "kind" in cellData &&
+              (cellData as { kind: string }).kind === "link-cell" &&
+              "url" in cellData
+            ) {
+              return (cellData as unknown as { url: string }).url;
+            } else {
+              return cellData;
+            }
+          }
+          return null;
+        };
+
+        const cellValue = getCellValue(cellContent);
+        const rowId = getHiddenKeyValue(arrowTableRef.current, cell[1]);
+
+        if (events.includes("OnCellClick"))
+          eventHandler("OnCellClick", widgetId, [
+            {
+              rowIndex: cell[1],
+              columnIndex: cell[0],
+              columnName: column?.name || "",
+              cellValue: cellValue,
+              rowId: rowId,
+            },
+          ]);
+      }
+
+      // Handle click on custom link cells (requires cmd/ctrl+click)
+      if (
+        cellContent.kind === GridCellKind.Custom &&
+        (cellContent.data as { kind?: string })?.kind === "link-cell" &&
+        (args.metaKey || args.ctrlKey)
+      ) {
+        const url = (cellContent.data as { url?: string })?.url;
+
+        // Validate URL to prevent open redirect vulnerabilities
+        const validatedUrl = validateLinkUrl(url);
+        if (validatedUrl === "#") {
+          // Invalid URL, don't proceed
+          return;
+        }
+
+        // External URLs (http/https) open in new tab
+        if (validatedUrl.startsWith("http://") || validatedUrl.startsWith("https://")) {
+          const newWindow = window.open(validatedUrl, "_blank", "noopener,noreferrer");
+          newWindow?.focus();
+        } else {
+          // Internal relative URLs navigate in same tab
+          // Validate it's safe for redirect (relative path or same-origin)
+          const redirectUrl = validateRedirectUrl(validatedUrl, false);
+          if (redirectUrl) {
+            window.location.href = redirectUrl;
+          }
+        }
+      }
+      // Do NOT prevent default - let selection happen normally!
+    },
+    [
+      enableCellClickEvents,
+      events,
+      eventHandler,
+      widgetId,
+      columns,
+      getCellContent,
+      visibleRows,
+      arrowTableRef,
+    ],
+  );
+
+  // Handle cell double-clicks/activation (for editing)
+  const handleCellActivated = useCallback(
+    (cell: Item) => {
+      const [, row] = cell;
+      // Prevent interactions with empty filler rows
+      if (row >= visibleRows) {
+        return;
+      }
+
+      if (enableCellClickEvents ?? false) {
+        const cellContent = getCellContent(cell);
+        const visibleColumns = columns.filter((c) => !c.hidden);
+        const column = visibleColumns[cell[0]];
+
+        // Extract the actual value from the cell based on its kind
+        let cellValue: unknown = null;
+        if (
+          cellContent.kind === "text" ||
+          cellContent.kind === "number" ||
+          cellContent.kind === "boolean"
+        ) {
+          cellValue = cellContent.data;
+        } else if ("data" in cellContent) {
+          // Cast to unknown first, then access the data property
+          cellValue = (cellContent as unknown as { data: unknown }).data;
+        }
+
+        const rowId = getHiddenKeyValue(arrowTableRef.current, cell[1]);
+
+        // Send activation event to backend as a single object matching CellClickEventArgs structure
+        if (events.includes("OnCellActivated"))
+          eventHandler("OnCellActivated", widgetId, [
+            {
+              rowIndex: cell[1],
+              columnIndex: cell[0],
+              columnName: column?.name || "",
+              cellValue: cellValue,
+              rowId: rowId,
+            },
+          ]);
+      }
+    },
+    [
+      enableCellClickEvents,
+      events,
+      eventHandler,
+      widgetId,
+      columns,
+      getCellContent,
+      visibleRows,
+      arrowTableRef,
+    ],
+  );
+
+  return {
+    handleCellClicked,
+    handleCellActivated,
+  };
+};

@@ -1,0 +1,19 @@
+/target
+/rusty/target
+/rusty-macros/target
+/rusty-server/target
+
+# Frontend
+src/frontend/node_modules/
+src/frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
