@@ -479,6 +479,7 @@ impl From<Checkbox> for Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hooks::hook_store::HookStore;
 
     #[test]
     fn test_text_input_builder() {
@@ -521,7 +522,8 @@ mod tests {
 
     #[test]
     fn test_text_input_json_includes_id() {
-        let mut ctx = BuildContext::new();
+        let mut store = HookStore::default();
+        let mut ctx = BuildContext::new(&mut store, None);
         let input = TextInput::new().build(&mut ctx);
         let json = input.to_json();
         assert_eq!(json["id"], "w-0");
@@ -530,7 +532,8 @@ mod tests {
 
     #[test]
     fn test_number_input_json_includes_id() {
-        let mut ctx = BuildContext::new();
+        let mut store = HookStore::default();
+        let mut ctx = BuildContext::new(&mut store, None);
         let input = NumberInput::new().build(&mut ctx);
         let json = input.to_json();
         assert_eq!(json["id"], "w-0");
@@ -538,7 +541,8 @@ mod tests {
 
     #[test]
     fn test_select_json_includes_id() {
-        let mut ctx = BuildContext::new();
+        let mut store = HookStore::default();
+        let mut ctx = BuildContext::new(&mut store, None);
         let select = Select::new(vec![]).build(&mut ctx);
         let json = select.to_json();
         assert_eq!(json["id"], "w-0");
@@ -546,7 +550,8 @@ mod tests {
 
     #[test]
     fn test_checkbox_json_includes_id() {
-        let mut ctx = BuildContext::new();
+        let mut store = HookStore::default();
+        let mut ctx = BuildContext::new(&mut store, None);
         let cb = Checkbox::new(false).build(&mut ctx);
         let json = cb.to_json();
         assert_eq!(json["id"], "w-0");
@@ -554,7 +559,8 @@ mod tests {
 
     #[test]
     fn test_widget_ids_are_sequential() {
-        let mut ctx = BuildContext::new();
+        let mut store = HookStore::default();
+        let mut ctx = BuildContext::new(&mut store, None);
         let input1 = TextInput::new().build(&mut ctx);
         let input2 = TextInput::new().build(&mut ctx);
         assert_eq!(input1.id, Some("w-0".to_string()));

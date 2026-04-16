@@ -145,6 +145,7 @@ impl From<Button> for Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hooks::hook_store::HookStore;
 
     #[test]
     fn test_button_builder() {
@@ -173,7 +174,8 @@ mod tests {
 
     #[test]
     fn test_button_json_includes_id() {
-        let mut ctx = BuildContext::new();
+        let mut store = HookStore::default();
+        let mut ctx = BuildContext::new(&mut store, None);
         let btn = Button::new("Test").build(&mut ctx);
         let json = btn.to_json();
         assert_eq!(json["id"], "w-0");
@@ -182,7 +184,8 @@ mod tests {
 
     #[test]
     fn test_button_build_registers_handler() {
-        let mut ctx = BuildContext::new();
+        let mut store = HookStore::default();
+        let mut ctx = BuildContext::new(&mut store, None);
         let btn = Button::new("Click").on_click(|| {}).build(&mut ctx);
         assert_eq!(btn.id, Some("w-0".to_string()));
         assert!(json!({"hasOnClick": true})["hasOnClick"].as_bool().unwrap());

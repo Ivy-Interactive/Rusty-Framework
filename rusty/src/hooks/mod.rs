@@ -1,9 +1,20 @@
+pub mod deps;
+pub mod hook_store;
 pub mod use_callback;
+pub mod use_context;
 pub mod use_effect;
+pub mod use_interval;
 pub mod use_memo;
+pub mod use_reducer;
+pub mod use_ref;
 pub mod use_state;
 
+pub use deps::{deps_changed, DynEq};
 pub use use_callback::use_callback;
-pub use use_effect::use_effect;
+pub use use_context::{create_context, use_context};
+pub use use_effect::{use_effect, use_effect_with_deps};
+pub use use_interval::use_interval;
 pub use use_memo::use_memo;
+pub use use_reducer::use_reducer;
+pub use use_ref::{use_ref, Ref};
 pub use use_state::{use_state, State};

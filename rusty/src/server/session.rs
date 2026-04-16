@@ -110,8 +110,8 @@ mod tests {
         }));
 
         // Create two sessions — each gets its own Runtime with a different view
-        let session_a = store.create_session("conn-a".to_string()).await;
-        let session_b = store.create_session("conn-b".to_string()).await;
+        let mut session_a = store.create_session("conn-a".to_string()).await;
+        let mut session_b = store.create_session("conn-b".to_string()).await;
 
         // Build each session's tree independently
         let tree_a = session_a.runtime.build().await;
@@ -144,7 +144,7 @@ mod tests {
             let store = store.clone();
             let handle = tokio::spawn(async move {
                 let id = format!("conn-{}", i);
-                let session = store.create_session(id.clone()).await;
+                let mut session = store.create_session(id.clone()).await;
                 // Verify we got a valid session by building its tree
                 let tree = session.runtime.build().await;
                 let json = serde_json::to_value(&tree).unwrap().to_string();
