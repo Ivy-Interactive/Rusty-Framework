@@ -531,4 +531,40 @@ mod tests {
             assert_eq!(tooltip.get_id(), Some("w-0"));
         }
     }
+
+    #[test]
+    fn test_tooltip_child_button_click_dispatched() {
+        let mut store = HookStore::default();
+        let mut ctx = BuildContext::new(&mut store, None);
+
+        let clicked = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let clicked_clone = clicked.clone();
+
+        let mut element: Element = Tooltip::new(
+            "tip",
+            Button::new("Click").on_click(move || {
+                clicked_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+            }),
+        )
+        .into();
+
+        element.assign_ids(&mut ctx);
+
+        // Tooltip gets w-0, inner Button gets w-1
+        if let Element::Widget(tooltip) = &element {
+            assert_eq!(tooltip.get_id(), Some("w-0"));
+        }
+
+        // Dispatch the click event on the inner Button's ID
+        let registry = ctx.take_event_registry();
+        let dispatched = registry.dispatch("w-1", "click", serde_json::Value::Null);
+        assert!(
+            dispatched,
+            "click event should be registered for inner Button w-1"
+        );
+        assert!(
+            clicked.load(std::sync::atomic::Ordering::SeqCst),
+            "on_click handler should have fired"
+        );
+    }
 }
