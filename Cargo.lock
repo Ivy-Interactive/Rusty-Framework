@@ -786,6 +786,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rusty-samples"
+version = "0.1.0"
+dependencies = [
+ "rusty",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rusty-server"
 version = "0.1.0"
 dependencies = [
