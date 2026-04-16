@@ -7,6 +7,8 @@ use axum::{
 };
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -56,6 +58,7 @@ pub struct AppState {
 pub struct RustyServer {
     port: u16,
     root_view: Box<dyn Fn() -> Box<dyn View> + Send + Sync>,
+    static_dir: Option<PathBuf>,
 }
 
 impl RustyServer {
@@ -67,7 +70,14 @@ impl RustyServer {
         RustyServer {
             port,
             root_view: Box::new(move || Box::new(root_factory())),
+            static_dir: None,
         }
+    }
+
+    /// Serve static files from the given directory at `/`.
+    pub fn with_static_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.static_dir = Some(dir.into());
+        self
     }
 
     /// Build the axum router with WebSocket support.
@@ -76,20 +86,45 @@ impl RustyServer {
         let session_store = AppSessionStore::new(root_factory);
         let state = Arc::new(AppState { session_store });
 
-        Router::new()
+        let mut router = Router::new()
             .route("/ws", get(ws_handler))
             .route("/health", get(health_handler))
-            .with_state(state)
+            .with_state(state);
+
+        if let Some(dir) = self.static_dir {
+            router = router.fallback_service(
+                tower_http::services::ServeDir::new(dir).append_index_html_on_directories(true),
+            );
+        }
+
+        router
     }
 
     /// Start the server and listen for connections.
+    /// Returns the actual bound address (useful when port is 0).
     pub async fn serve(self) -> Result<(), Box<dyn std::error::Error>> {
         let addr = format!("0.0.0.0:{}", self.port);
         let router = self.router();
         let listener = tokio::net::TcpListener::bind(&addr).await?;
-        tracing::info!("Rusty server listening on {}", addr);
+        let local_addr = listener.local_addr()?;
+        tracing::info!("Rusty server listening on {}", local_addr);
+        println!("RUSTY_PORT={}", local_addr.port());
         axum::serve(listener, router).await?;
         Ok(())
+    }
+
+    /// Start the server and return the bound address without blocking.
+    /// Useful for testing — spawns the server on a background task.
+    pub async fn serve_background(self) -> Result<SocketAddr, Box<dyn std::error::Error>> {
+        let addr = format!("0.0.0.0:{}", self.port);
+        let router = self.router();
+        let listener = tokio::net::TcpListener::bind(&addr).await?;
+        let local_addr = listener.local_addr()?;
+        tracing::info!("Rusty server listening on {}", local_addr);
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, router).await;
+        });
+        Ok(local_addr)
     }
 }
 
