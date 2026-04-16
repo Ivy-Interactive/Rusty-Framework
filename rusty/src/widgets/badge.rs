@@ -1,5 +1,5 @@
 use crate::shared::Color;
-use crate::views::view::{Element, WidgetData};
+use crate::views::view::{BuildContext, Element, WidgetData};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -14,6 +14,8 @@ pub enum BadgeVariant {
 /// A status indicator badge widget.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Badge {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub label: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub variant: Option<BadgeVariant>,
@@ -24,10 +26,17 @@ pub struct Badge {
 impl Badge {
     pub fn new(label: &str) -> Self {
         Badge {
+            id: None,
             label: label.to_string(),
             variant: None,
             color: None,
         }
+    }
+
+    /// Assign a widget ID from the BuildContext.
+    pub fn build(mut self, ctx: &mut BuildContext) -> Self {
+        self.id = Some(ctx.next_widget_id());
+        self
     }
 
     pub fn variant(mut self, variant: BadgeVariant) -> Self {
@@ -53,6 +62,7 @@ impl WidgetData for Badge {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "type": "badge",
+            "id": self.id,
             "label": self.label,
             "variant": self.variant,
             "color": self.color,

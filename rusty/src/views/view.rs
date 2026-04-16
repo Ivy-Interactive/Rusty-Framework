@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::fmt::Debug;
 
+use crate::core::event_registry::{EventCallback, EventRegistry};
 use crate::hooks::hook_store::HookStore;
 
 /// Trait for serializable UI widgets sent to the client.
@@ -61,7 +62,7 @@ pub trait View: Send + Sync + 'static {
     fn build(&self, ctx: &mut BuildContext) -> Element;
 }
 
-/// Context passed to View::build providing access to hooks and state.
+/// Context passed to View::build providing access to hooks, state, and event registration.
 ///
 /// Holds a mutable reference to a `HookStore` that persists across re-renders,
 /// analogous to Ivy-Framework's `ViewContext` with its `_hooks` dictionary.
@@ -71,6 +72,8 @@ pub struct BuildContext<'a> {
     effects: Vec<EffectRecord>,
     /// Sender for triggering rebuilds when state changes.
     rebuild_tx: Option<tokio::sync::mpsc::Sender<()>>,
+    event_registry: EventRegistry,
+    widget_id_counter: usize,
 }
 
 /// Cleanup function returned by an effect callback.
@@ -95,12 +98,32 @@ impl<'a> BuildContext<'a> {
             store,
             effects: Vec::new(),
             rebuild_tx,
+            event_registry: EventRegistry::new(),
+            widget_id_counter: 0,
         }
     }
 
     /// Reset hook index to 0 between builds (like Ivy's ViewContext.Reset()).
     pub fn reset(&mut self) {
         self.hook_index = 0;
+    }
+
+    /// Generate the next deterministic widget ID (e.g., "w-0", "w-1", ...).
+    pub fn next_widget_id(&mut self) -> String {
+        let id = format!("w-{}", self.widget_id_counter);
+        self.widget_id_counter += 1;
+        id
+    }
+
+    /// Register an event handler for a widget.
+    pub fn register_event(&mut self, widget_id: &str, event_name: &str, callback: EventCallback) {
+        self.event_registry
+            .register(widget_id, event_name, callback);
+    }
+
+    /// Take ownership of the event registry (called by runtime after build).
+    pub fn take_event_registry(&mut self) -> EventRegistry {
+        std::mem::take(&mut self.event_registry)
     }
 
     /// Get the next hook index (for hooks to track call order).

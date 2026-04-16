@@ -1,5 +1,5 @@
 use crate::shared::{Align, Justify};
-use crate::views::view::{Element, WidgetData};
+use crate::views::view::{BuildContext, Element, WidgetData};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -14,6 +14,8 @@ pub enum LayoutDirection {
 /// A flexbox-style layout container widget.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Layout {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub direction: LayoutDirection,
     pub children: Vec<Element>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -31,6 +33,7 @@ pub struct Layout {
 impl Layout {
     pub fn vertical() -> Self {
         Layout {
+            id: None,
             direction: LayoutDirection::Vertical,
             children: Vec::new(),
             gap: None,
@@ -43,6 +46,7 @@ impl Layout {
 
     pub fn horizontal() -> Self {
         Layout {
+            id: None,
             direction: LayoutDirection::Horizontal,
             children: Vec::new(),
             gap: None,
@@ -55,6 +59,7 @@ impl Layout {
 
     pub fn grid(columns: usize) -> Self {
         Layout {
+            id: None,
             direction: LayoutDirection::Grid,
             children: Vec::new(),
             gap: None,
@@ -63,6 +68,12 @@ impl Layout {
             padding: None,
             columns: Some(columns),
         }
+    }
+
+    /// Assign a widget ID from the BuildContext.
+    pub fn build(mut self, ctx: &mut BuildContext) -> Self {
+        self.id = Some(ctx.next_widget_id());
+        self
     }
 
     pub fn gap(mut self, gap: f64) -> Self {
@@ -114,6 +125,7 @@ impl WidgetData for Layout {
 
         json!({
             "type": "layout",
+            "id": self.id,
             "direction": self.direction,
             "children": children_json,
             "gap": self.gap,

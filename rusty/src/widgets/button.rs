@@ -1,5 +1,5 @@
 use crate::shared::{Color, Density, Icon};
-use crate::views::view::{Element, WidgetData};
+use crate::views::view::{BuildContext, Element, WidgetData};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -18,6 +18,8 @@ pub enum ButtonVariant {
 /// A clickable button widget.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Button {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub variant: Option<ButtonVariant>,
@@ -46,6 +48,7 @@ impl std::fmt::Debug for Button {
 impl Button {
     pub fn new(title: &str) -> Self {
         Button {
+            id: None,
             title: title.to_string(),
             variant: None,
             icon: None,
@@ -92,6 +95,17 @@ impl Button {
         self
     }
 
+    /// Assign a widget ID from the BuildContext and register event handlers.
+    pub fn build(mut self, ctx: &mut BuildContext) -> Self {
+        let widget_id = ctx.next_widget_id();
+        self.id = Some(widget_id.clone());
+        if let Some(handler) = &self.on_click {
+            let handler = handler.clone();
+            ctx.register_event(&widget_id, "click", Arc::new(move |_args| handler()));
+        }
+        self
+    }
+
     pub fn into_element(self) -> Element {
         Element::Widget(Box::new(self))
     }
@@ -105,6 +119,7 @@ impl WidgetData for Button {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "type": "button",
+            "id": self.id,
             "title": self.title,
             "variant": self.variant,
             "icon": self.icon,
@@ -112,6 +127,7 @@ impl WidgetData for Button {
             "loading": self.loading,
             "color": self.color,
             "density": self.density,
+            "hasOnClick": self.on_click.is_some(),
         })
     }
 
@@ -129,6 +145,7 @@ impl From<Button> for Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hooks::hook_store::HookStore;
 
     #[test]
     fn test_button_builder() {
@@ -153,5 +170,26 @@ mod tests {
     fn test_button_into_element() {
         let el: Element = Button::new("Click").into();
         assert!(matches!(el, Element::Widget(_)));
+    }
+
+    #[test]
+    fn test_button_json_includes_id() {
+        let mut store = HookStore::default();
+        let mut ctx = BuildContext::new(&mut store, None);
+        let btn = Button::new("Test").build(&mut ctx);
+        let json = btn.to_json();
+        assert_eq!(json["id"], "w-0");
+        assert_eq!(json["type"], "button");
+    }
+
+    #[test]
+    fn test_button_build_registers_handler() {
+        let mut store = HookStore::default();
+        let mut ctx = BuildContext::new(&mut store, None);
+        let btn = Button::new("Click").on_click(|| {}).build(&mut ctx);
+        assert_eq!(btn.id, Some("w-0".to_string()));
+        assert!(json!({"hasOnClick": true})["hasOnClick"].as_bool().unwrap());
+        let json = btn.to_json();
+        assert_eq!(json["hasOnClick"], true);
     }
 }

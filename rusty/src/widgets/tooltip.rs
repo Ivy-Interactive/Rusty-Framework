@@ -1,10 +1,12 @@
-use crate::views::view::{Element, WidgetData};
+use crate::views::view::{BuildContext, Element, WidgetData};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 /// A hover tooltip widget that wraps a child element.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tooltip {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub content: String,
     pub child: Box<Element>,
 }
@@ -12,9 +14,16 @@ pub struct Tooltip {
 impl Tooltip {
     pub fn new(content: &str, child: impl Into<Element>) -> Self {
         Tooltip {
+            id: None,
             content: content.to_string(),
             child: Box::new(child.into()),
         }
+    }
+
+    /// Assign a widget ID from the BuildContext.
+    pub fn build(mut self, ctx: &mut BuildContext) -> Self {
+        self.id = Some(ctx.next_widget_id());
+        self
     }
 
     pub fn into_element(self) -> Element {
@@ -30,6 +39,7 @@ impl WidgetData for Tooltip {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "type": "tooltip",
+            "id": self.id,
             "content": self.content,
             "child": serde_json::to_value(&*self.child).unwrap_or_default(),
         })

@@ -1,4 +1,4 @@
-use crate::views::view::{Element, WidgetData};
+use crate::views::view::{BuildContext, Element, WidgetData};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -12,6 +12,8 @@ pub struct Column {
 /// A data table widget with sorting and filtering support.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Table {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub columns: Vec<Column>,
     pub rows: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -22,11 +24,18 @@ pub struct Table {
 impl Table {
     pub fn new(columns: Vec<Column>) -> Self {
         Table {
+            id: None,
             columns,
             rows: Vec::new(),
             sort_by: None,
             sort_ascending: true,
         }
+    }
+
+    /// Assign a widget ID from the BuildContext.
+    pub fn build(mut self, ctx: &mut BuildContext) -> Self {
+        self.id = Some(ctx.next_widget_id());
+        self
     }
 
     pub fn rows(mut self, rows: Vec<serde_json::Value>) -> Self {
@@ -53,6 +62,7 @@ impl WidgetData for Table {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "type": "table",
+            "id": self.id,
             "columns": self.columns,
             "rows": self.rows,
             "sortBy": self.sort_by,
