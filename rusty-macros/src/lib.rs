@@ -9,7 +9,11 @@ use syn::{parse_macro_input, DeriveInput};
 ///
 /// Fields marked with `#[prop]` are included in serialization.
 /// Fields marked with `#[event]` are skipped in serialization but
-/// registered as event handlers.
+/// generate `has_<event_name>` boolean fields in the JSON output
+/// and can be registered via the `build()` method.
+///
+/// The `id` field (if present as `Option<String>`) is automatically
+/// included in the JSON output.
 ///
 /// # Example
 ///
@@ -53,6 +57,15 @@ pub fn derive_widget(input: TokenStream) -> TokenStream {
         .filter(|f| f.attrs.iter().any(|a| a.path().is_ident("prop")))
         .collect();
 
+    let event_fields: Vec<_> = fields
+        .iter()
+        .filter(|f| f.attrs.iter().any(|a| a.path().is_ident("event")))
+        .collect();
+
+    let has_id_field = fields
+        .iter()
+        .any(|f| f.ident.as_ref().is_some_and(|i| i == "id"));
+
     let json_fields: Vec<_> = prop_fields
         .iter()
         .map(|f| {
@@ -64,6 +77,28 @@ pub fn derive_widget(input: TokenStream) -> TokenStream {
         })
         .collect();
 
+    // Generate "has<EventName>" boolean entries for event fields
+    let event_has_fields: Vec<_> = event_fields
+        .iter()
+        .map(|f| {
+            let field_name = f.ident.as_ref().unwrap();
+            let field_str = field_name.to_string();
+            // Convert on_click -> hasOnClick, on_change -> hasOnChange
+            let has_key = format!("has{}", to_pascal_case(&field_str));
+            quote! {
+                map.insert(#has_key.to_string(), serde_json::Value::Bool(self.#field_name.is_some()));
+            }
+        })
+        .collect();
+
+    let id_field = if has_id_field {
+        quote! {
+            map.insert("id".to_string(), serde_json::to_value(&self.id).unwrap_or_default());
+        }
+    } else {
+        quote! {}
+    };
+
     let expanded = quote! {
         impl crate::views::view::WidgetData for #name {
             fn widget_type(&self) -> &str {
@@ -73,7 +108,9 @@ pub fn derive_widget(input: TokenStream) -> TokenStream {
             fn to_json(&self) -> serde_json::Value {
                 let mut map = serde_json::Map::new();
                 map.insert("type".to_string(), serde_json::Value::String(#widget_type.to_string()));
+                #id_field
                 #(#json_fields)*
+                #(#event_has_fields)*
                 serde_json::Value::Object(map)
             }
 
@@ -100,6 +137,23 @@ fn to_snake_case(s: &str) -> String {
 fn to_camel_case(s: &str) -> String {
     let mut result = String::new();
     let mut capitalize_next = false;
+    for ch in s.chars() {
+        if ch == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.push(ch.to_uppercase().next().unwrap());
+            capitalize_next = false;
+        } else {
+            result.push(ch);
+        }
+    }
+    result
+}
+
+/// Convert snake_case to PascalCase (e.g., on_click -> OnClick)
+fn to_pascal_case(s: &str) -> String {
+    let mut result = String::new();
+    let mut capitalize_next = true;
     for ch in s.chars() {
         if ch == '_' {
             capitalize_next = true;

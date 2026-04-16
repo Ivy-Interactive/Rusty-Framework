@@ -1,10 +1,12 @@
-use crate::views::view::{Element, WidgetData};
+use crate::views::view::{BuildContext, Element, WidgetData};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 /// A container widget with optional header, body, and footer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Card {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -19,12 +21,19 @@ pub struct Card {
 impl Card {
     pub fn new() -> Self {
         Card {
+            id: None,
             title: None,
             subtitle: None,
             children: Vec::new(),
             footer: None,
             padding: None,
         }
+    }
+
+    /// Assign a widget ID from the BuildContext.
+    pub fn build(mut self, ctx: &mut BuildContext) -> Self {
+        self.id = Some(ctx.next_widget_id());
+        self
     }
 
     pub fn title(mut self, title: &str) -> Self {
@@ -71,6 +80,7 @@ impl WidgetData for Card {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "type": "card",
+            "id": self.id,
             "title": self.title,
             "subtitle": self.subtitle,
             "children": self.children.iter()

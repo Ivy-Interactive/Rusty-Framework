@@ -1,4 +1,4 @@
-use crate::views::view::{Element, WidgetData};
+use crate::views::view::{BuildContext, Element, WidgetData};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -6,6 +6,8 @@ use std::sync::Arc;
 /// A text input widget.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TextInput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -30,6 +32,7 @@ impl std::fmt::Debug for TextInput {
 impl TextInput {
     pub fn new() -> Self {
         TextInput {
+            id: None,
             value: None,
             placeholder: None,
             label: None,
@@ -64,6 +67,25 @@ impl TextInput {
         self
     }
 
+    /// Assign a widget ID from the BuildContext and register event handlers.
+    pub fn build(mut self, ctx: &mut BuildContext) -> Self {
+        let widget_id = ctx.next_widget_id();
+        self.id = Some(widget_id.clone());
+        if let Some(handler) = &self.on_change {
+            let handler = handler.clone();
+            ctx.register_event(
+                &widget_id,
+                "change",
+                Arc::new(move |args| {
+                    if let Some(value) = args.get("value").and_then(|v| v.as_str()) {
+                        handler(value.to_string());
+                    }
+                }),
+            );
+        }
+        self
+    }
+
     pub fn into_element(self) -> Element {
         Element::Widget(Box::new(self))
     }
@@ -83,11 +105,13 @@ impl WidgetData for TextInput {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "type": "text_input",
+            "id": self.id,
             "value": self.value,
             "placeholder": self.placeholder,
             "label": self.label,
             "disabled": self.disabled,
             "readOnly": self.read_only,
+            "hasOnChange": self.on_change.is_some(),
         })
     }
 
@@ -105,6 +129,8 @@ impl From<TextInput> for Element {
 /// A numeric input widget.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct NumberInput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -132,6 +158,7 @@ impl std::fmt::Debug for NumberInput {
 impl NumberInput {
     pub fn new() -> Self {
         NumberInput {
+            id: None,
             value: None,
             min: None,
             max: None,
@@ -172,6 +199,25 @@ impl NumberInput {
         self
     }
 
+    /// Assign a widget ID from the BuildContext and register event handlers.
+    pub fn build(mut self, ctx: &mut BuildContext) -> Self {
+        let widget_id = ctx.next_widget_id();
+        self.id = Some(widget_id.clone());
+        if let Some(handler) = &self.on_change {
+            let handler = handler.clone();
+            ctx.register_event(
+                &widget_id,
+                "change",
+                Arc::new(move |args| {
+                    if let Some(value) = args.get("value").and_then(|v| v.as_f64()) {
+                        handler(value);
+                    }
+                }),
+            );
+        }
+        self
+    }
+
     pub fn into_element(self) -> Element {
         Element::Widget(Box::new(self))
     }
@@ -191,12 +237,14 @@ impl WidgetData for NumberInput {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "type": "number_input",
+            "id": self.id,
             "value": self.value,
             "min": self.min,
             "max": self.max,
             "step": self.step,
             "label": self.label,
             "disabled": self.disabled,
+            "hasOnChange": self.on_change.is_some(),
         })
     }
 
@@ -214,6 +262,8 @@ impl From<NumberInput> for Element {
 /// A dropdown select widget.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Select {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub options: Vec<SelectOption>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
@@ -244,6 +294,7 @@ pub struct SelectOption {
 impl Select {
     pub fn new(options: Vec<SelectOption>) -> Self {
         Select {
+            id: None,
             options,
             value: None,
             label: None,
@@ -273,6 +324,25 @@ impl Select {
         self
     }
 
+    /// Assign a widget ID from the BuildContext and register event handlers.
+    pub fn build(mut self, ctx: &mut BuildContext) -> Self {
+        let widget_id = ctx.next_widget_id();
+        self.id = Some(widget_id.clone());
+        if let Some(handler) = &self.on_change {
+            let handler = handler.clone();
+            ctx.register_event(
+                &widget_id,
+                "change",
+                Arc::new(move |args| {
+                    if let Some(value) = args.get("value").and_then(|v| v.as_str()) {
+                        handler(value.to_string());
+                    }
+                }),
+            );
+        }
+        self
+    }
+
     pub fn into_element(self) -> Element {
         Element::Widget(Box::new(self))
     }
@@ -286,11 +356,13 @@ impl WidgetData for Select {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "type": "select",
+            "id": self.id,
             "options": self.options,
             "value": self.value,
             "label": self.label,
             "placeholder": self.placeholder,
             "disabled": self.disabled,
+            "hasOnChange": self.on_change.is_some(),
         })
     }
 
@@ -308,6 +380,8 @@ impl From<Select> for Element {
 /// A checkbox widget.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Checkbox {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub checked: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
@@ -328,6 +402,7 @@ impl std::fmt::Debug for Checkbox {
 impl Checkbox {
     pub fn new(checked: bool) -> Self {
         Checkbox {
+            id: None,
             checked,
             label: None,
             disabled: false,
@@ -350,6 +425,25 @@ impl Checkbox {
         self
     }
 
+    /// Assign a widget ID from the BuildContext and register event handlers.
+    pub fn build(mut self, ctx: &mut BuildContext) -> Self {
+        let widget_id = ctx.next_widget_id();
+        self.id = Some(widget_id.clone());
+        if let Some(handler) = &self.on_change {
+            let handler = handler.clone();
+            ctx.register_event(
+                &widget_id,
+                "change",
+                Arc::new(move |args| {
+                    if let Some(value) = args.get("value").and_then(|v| v.as_bool()) {
+                        handler(value);
+                    }
+                }),
+            );
+        }
+        self
+    }
+
     pub fn into_element(self) -> Element {
         Element::Widget(Box::new(self))
     }
@@ -363,9 +457,11 @@ impl WidgetData for Checkbox {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "type": "checkbox",
+            "id": self.id,
             "checked": self.checked,
             "label": self.label,
             "disabled": self.disabled,
+            "hasOnChange": self.on_change.is_some(),
         })
     }
 
@@ -421,5 +517,47 @@ mod tests {
         let cb = Checkbox::new(true).label("Accept terms");
         assert!(cb.checked);
         assert_eq!(cb.label.as_deref(), Some("Accept terms"));
+    }
+
+    #[test]
+    fn test_text_input_json_includes_id() {
+        let mut ctx = BuildContext::new();
+        let input = TextInput::new().build(&mut ctx);
+        let json = input.to_json();
+        assert_eq!(json["id"], "w-0");
+        assert_eq!(json["type"], "text_input");
+    }
+
+    #[test]
+    fn test_number_input_json_includes_id() {
+        let mut ctx = BuildContext::new();
+        let input = NumberInput::new().build(&mut ctx);
+        let json = input.to_json();
+        assert_eq!(json["id"], "w-0");
+    }
+
+    #[test]
+    fn test_select_json_includes_id() {
+        let mut ctx = BuildContext::new();
+        let select = Select::new(vec![]).build(&mut ctx);
+        let json = select.to_json();
+        assert_eq!(json["id"], "w-0");
+    }
+
+    #[test]
+    fn test_checkbox_json_includes_id() {
+        let mut ctx = BuildContext::new();
+        let cb = Checkbox::new(false).build(&mut ctx);
+        let json = cb.to_json();
+        assert_eq!(json["id"], "w-0");
+    }
+
+    #[test]
+    fn test_widget_ids_are_sequential() {
+        let mut ctx = BuildContext::new();
+        let input1 = TextInput::new().build(&mut ctx);
+        let input2 = TextInput::new().build(&mut ctx);
+        assert_eq!(input1.id, Some("w-0".to_string()));
+        assert_eq!(input2.id, Some("w-1".to_string()));
     }
 }

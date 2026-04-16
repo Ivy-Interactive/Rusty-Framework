@@ -1,10 +1,12 @@
-use crate::views::view::{Element, WidgetData};
+use crate::views::view::{BuildContext, Element, WidgetData};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 /// A modal dialog widget.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Dialog {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub open: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
@@ -16,11 +18,18 @@ pub struct Dialog {
 impl Dialog {
     pub fn new(open: bool) -> Self {
         Dialog {
+            id: None,
             open,
             title: None,
             children: Vec::new(),
             footer: None,
         }
+    }
+
+    /// Assign a widget ID from the BuildContext.
+    pub fn build(mut self, ctx: &mut BuildContext) -> Self {
+        self.id = Some(ctx.next_widget_id());
+        self
     }
 
     pub fn title(mut self, title: &str) -> Self {
@@ -51,6 +60,7 @@ impl WidgetData for Dialog {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "type": "dialog",
+            "id": self.id,
             "open": self.open,
             "title": self.title,
             "children": self.children.iter()

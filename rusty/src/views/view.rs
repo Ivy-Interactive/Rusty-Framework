@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::fmt::Debug;
 
+use crate::core::event_registry::{EventCallback, EventRegistry};
+
 /// Trait for serializable UI widgets sent to the client.
 pub trait Widget: Send + Sync + Debug + 'static {
     /// The widget type name (e.g., "button", "text_block").
@@ -59,11 +61,13 @@ pub trait View: Send + Sync + 'static {
     fn build(&self, ctx: &mut BuildContext) -> Element;
 }
 
-/// Context passed to View::build providing access to hooks and state.
+/// Context passed to View::build providing access to hooks, state, and event registration.
 pub struct BuildContext {
     hook_index: usize,
     states: Vec<Box<dyn Any + Send + Sync>>,
     effects: Vec<Box<dyn FnOnce() + Send>>,
+    event_registry: EventRegistry,
+    widget_id_counter: usize,
 }
 
 impl BuildContext {
@@ -72,7 +76,27 @@ impl BuildContext {
             hook_index: 0,
             states: Vec::new(),
             effects: Vec::new(),
+            event_registry: EventRegistry::new(),
+            widget_id_counter: 0,
         }
+    }
+
+    /// Generate the next deterministic widget ID (e.g., "w-0", "w-1", ...).
+    pub fn next_widget_id(&mut self) -> String {
+        let id = format!("w-{}", self.widget_id_counter);
+        self.widget_id_counter += 1;
+        id
+    }
+
+    /// Register an event handler for a widget.
+    pub fn register_event(&mut self, widget_id: &str, event_name: &str, callback: EventCallback) {
+        self.event_registry
+            .register(widget_id, event_name, callback);
+    }
+
+    /// Take ownership of the event registry (called by runtime after build).
+    pub fn take_event_registry(&mut self) -> EventRegistry {
+        std::mem::take(&mut self.event_registry)
     }
 
     /// Get the next hook index (for hooks to track call order).

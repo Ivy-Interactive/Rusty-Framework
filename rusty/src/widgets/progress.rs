@@ -1,11 +1,13 @@
 use crate::shared::Color;
-use crate::views::view::{Element, WidgetData};
+use crate::views::view::{BuildContext, Element, WidgetData};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 /// A progress bar widget.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Progress {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub value: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max: Option<f64>,
@@ -19,6 +21,7 @@ pub struct Progress {
 impl Progress {
     pub fn new(value: f64) -> Self {
         Progress {
+            id: None,
             value,
             max: None,
             label: None,
@@ -29,12 +32,19 @@ impl Progress {
 
     pub fn indeterminate() -> Self {
         Progress {
+            id: None,
             value: 0.0,
             max: None,
             label: None,
             color: None,
             indeterminate: true,
         }
+    }
+
+    /// Assign a widget ID from the BuildContext.
+    pub fn build(mut self, ctx: &mut BuildContext) -> Self {
+        self.id = Some(ctx.next_widget_id());
+        self
     }
 
     pub fn max(mut self, max: f64) -> Self {
@@ -65,6 +75,7 @@ impl WidgetData for Progress {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "type": "progress",
+            "id": self.id,
             "value": self.value,
             "max": self.max,
             "label": self.label,
