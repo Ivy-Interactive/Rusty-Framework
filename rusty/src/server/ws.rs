@@ -94,17 +94,13 @@ impl RustyServer {
 }
 
 /// Wrapper to make a boxed View usable.
-pub struct FuncView(pub Box<dyn View>);
+pub struct FuncView(pub Box<dyn View + Send + Sync>);
 
 impl View for FuncView {
     fn build(&self, ctx: &mut crate::views::view::BuildContext) -> crate::views::view::Element {
         self.0.build(ctx)
     }
 }
-
-// Make FuncView Send + Sync safe (View trait already requires it)
-unsafe impl Send for FuncView {}
-unsafe impl Sync for FuncView {}
 
 async fn health_handler() -> &'static str {
     "ok"

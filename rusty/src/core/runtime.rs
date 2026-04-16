@@ -23,7 +23,7 @@ pub enum RuntimeMessage {
 
 /// The application runtime manages the view tree, state, and event dispatch.
 pub struct Runtime {
-    root: Box<dyn View>,
+    root: Box<dyn View + Send + Sync>,
     tree: Arc<RwLock<Option<Element>>>,
     hook_stores: HashMap<ViewId, HookStore>,
     root_view_id: ViewId,
