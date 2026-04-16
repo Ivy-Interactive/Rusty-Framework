@@ -59,28 +59,6 @@ impl ViewTree {
         child_id
     }
 
-    /// Insert a child view with a specific ViewId (for stable keying).
-    pub fn insert_with_id(
-        &mut self,
-        parent_id: ViewId,
-        child_id: ViewId,
-        view: Arc<dyn View>,
-    ) -> ViewId {
-        let child_node = ViewNode {
-            view_id: child_id,
-            view,
-            parent: Some(parent_id),
-            children: Vec::new(),
-        };
-        self.nodes.insert(child_id, child_node);
-        if let Some(parent) = self.nodes.get_mut(&parent_id) {
-            if !parent.children.contains(&child_id) {
-                parent.children.push(child_id);
-            }
-        }
-        child_id
-    }
-
     /// Remove a node and all its descendants from the tree.
     /// Returns the list of removed ViewIds (for HookStore cleanup).
     pub fn remove(&mut self, view_id: ViewId) -> Vec<ViewId> {
