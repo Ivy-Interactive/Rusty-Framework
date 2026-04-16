@@ -36,6 +36,11 @@ impl EventRegistry {
         }
     }
 
+    /// Merge another registry's handlers into this one.
+    pub fn merge(&mut self, other: EventRegistry) {
+        self.handlers.extend(other.handlers);
+    }
+
     /// Remove all registered handlers.
     pub fn clear(&mut self) {
         self.handlers.clear();

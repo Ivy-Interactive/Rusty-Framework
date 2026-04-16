@@ -1,25 +1,34 @@
 use std::sync::{Arc, RwLock};
 
+use crate::shared::ViewId;
 use crate::views::view::BuildContext;
 
 /// Reactive state handle returned by `use_state`.
 ///
 /// `State<T>` is cheaply cloneable (Arc-backed) and can be shared across closures.
 /// When `set()` or `update()` is called, it sends a rebuild signal to the runtime's
-/// event loop so the view re-renders automatically.
+/// event loop so the view re-renders automatically. The signal carries the owning
+/// ViewId so the runtime can do targeted subtree rebuilds.
 #[derive(Debug)]
 pub struct State<T: Send + Sync + 'static> {
     inner: Arc<RwLock<T>>,
-    rebuild_tx: Option<tokio::sync::mpsc::Sender<()>>,
+    rebuild_tx: Option<tokio::sync::mpsc::Sender<ViewId>>,
+    /// The ViewId that owns this state, sent with rebuild signals.
+    view_id: ViewId,
     /// When true, mutations do NOT trigger rebuilds (used by use_ref).
     pub(crate) silent: bool,
 }
 
 impl<T: Send + Sync + Clone + 'static> State<T> {
-    pub(crate) fn new(initial: T, rebuild_tx: Option<tokio::sync::mpsc::Sender<()>>) -> Self {
+    pub(crate) fn new(
+        initial: T,
+        rebuild_tx: Option<tokio::sync::mpsc::Sender<ViewId>>,
+        view_id: ViewId,
+    ) -> Self {
         State {
             inner: Arc::new(RwLock::new(initial)),
             rebuild_tx,
+            view_id,
             silent: false,
         }
     }
@@ -29,6 +38,7 @@ impl<T: Send + Sync + Clone + 'static> State<T> {
         State {
             inner: Arc::new(RwLock::new(initial)),
             rebuild_tx: None,
+            view_id: uuid::Uuid::nil(),
             silent: true,
         }
     }
@@ -62,7 +72,7 @@ impl<T: Send + Sync + Clone + 'static> State<T> {
             return;
         }
         if let Some(ref tx) = self.rebuild_tx {
-            let _ = tx.try_send(());
+            let _ = tx.try_send(self.view_id);
         }
     }
 }
@@ -72,6 +82,7 @@ impl<T: Send + Sync + Clone + 'static> Clone for State<T> {
         State {
             inner: Arc::clone(&self.inner),
             rebuild_tx: self.rebuild_tx.clone(),
+            view_id: self.view_id,
             silent: self.silent,
         }
     }
@@ -83,9 +94,13 @@ impl<T: Send + Sync + Clone + 'static> Clone for State<T> {
 /// the persisted state from the HookStore (mutations are preserved).
 pub fn use_state<T: Send + Sync + Clone + 'static>(ctx: &mut BuildContext, initial: T) -> State<T> {
     let idx = ctx.next_hook_index();
-    let rebuild_tx = ctx.rebuild_sender();
+    let rebuild_info = ctx.rebuild_sender();
+    let (rebuild_tx, view_id) = match rebuild_info {
+        Some((tx, vid)) => (Some(tx), vid),
+        None => (None, uuid::Uuid::nil()),
+    };
     ctx.store
-        .get_or_init_state(idx, || State::new(initial, rebuild_tx))
+        .get_or_init_state(idx, || State::new(initial, rebuild_tx, view_id))
 }
 
 #[cfg(test)]
@@ -145,10 +160,12 @@ mod tests {
     fn test_state_set_triggers_rebuild() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
         let mut store = HookStore::new();
-        let mut ctx = BuildContext::new(&mut store, Some(tx));
+        let view_id = uuid::Uuid::new_v4();
+        let mut ctx = BuildContext::with_view_id(&mut store, Some(tx), view_id);
         let state = use_state(&mut ctx, 0);
 
         state.set(1);
-        assert!(rx.try_recv().is_ok());
+        let received = rx.try_recv().unwrap();
+        assert_eq!(received, view_id);
     }
 }

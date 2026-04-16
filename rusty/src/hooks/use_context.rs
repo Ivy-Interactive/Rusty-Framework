@@ -11,18 +11,17 @@ pub fn create_context<T: Send + Sync + Clone + 'static>(ctx: &mut BuildContext, 
     ctx.store.contexts.insert(type_id, Box::new(value));
 }
 
-/// Retrieve a context value of type `T` from an ancestor's context.
+/// Retrieve a context value of type `T` from the current view or an ancestor's context.
 ///
-/// Panics if no context of type `T` has been created by an ancestor.
-/// In a full multi-view implementation, this would walk the view ancestor chain;
-/// currently it looks up the current view's HookStore.
+/// Walks the ancestor chain from the current view upward, checking each view's
+/// HookStore for a matching context value. Panics if no context of type `T` is found.
 pub fn use_context<T: Send + Sync + Clone + 'static>(ctx: &mut BuildContext) -> T {
     let _idx = ctx.next_hook_index();
     let type_id = TypeId::of::<T>();
-    ctx.store
-        .contexts
-        .get(&type_id)
-        .and_then(|boxed| boxed.downcast_ref::<T>())
+
+    // Walk from current store up through ancestor stores
+    ctx.find_ancestor_context(type_id)
+        .and_then(|any| any.downcast_ref::<T>())
         .cloned()
         .unwrap_or_else(|| {
             panic!(
