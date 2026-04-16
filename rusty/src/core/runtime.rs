@@ -86,12 +86,15 @@ impl Runtime {
             let mut ctx = BuildContext::with_view_id(store, Some(rebuild_tx), view_id);
             ctx.reset();
 
-            // Build the view
-            let view_node = self.view_tree.get(&view_id).expect("view_id not in tree");
-            // SAFETY: We need to borrow view immutably while store is borrowed mutably.
-            // The view reference does not alias with the store reference.
-            let view_ptr = &*view_node.view as *const dyn View;
-            let element = unsafe { &*view_ptr }.build(&mut ctx);
+            // Clone the Arc<dyn View> so we can borrow view immutably while
+            // store is borrowed mutably — no raw pointer needed.
+            let view_clone = self
+                .view_tree
+                .get(&view_id)
+                .expect("view_id not in tree")
+                .view
+                .clone();
+            let element = view_clone.build(&mut ctx);
 
             let mut element = element;
             element.assign_ids(&mut ctx);

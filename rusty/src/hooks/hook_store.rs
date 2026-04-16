@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use super::deps::DynEq;
 use crate::views::view::EffectCleanup;
@@ -33,8 +34,9 @@ pub struct HookStore {
     pub effects: HashMap<usize, EffectEntry>,
     /// Cached memo values keyed by hook index.
     pub memos: HashMap<usize, MemoEntry>,
-    /// Context values keyed by TypeId name (for use_context).
-    pub contexts: HashMap<std::any::TypeId, Box<dyn Any + Send + Sync>>,
+    /// Context values keyed by TypeId (for use_context). Uses `Arc` so ancestor
+    /// context snapshots can be cheaply cloned without raw pointers.
+    pub contexts: HashMap<std::any::TypeId, Arc<dyn Any + Send + Sync>>,
 }
 
 impl HookStore {
