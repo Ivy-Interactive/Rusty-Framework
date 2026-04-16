@@ -193,20 +193,30 @@ mod tests {
     fn test_button_json_includes_id() {
         let mut store = HookStore::default();
         let mut ctx = BuildContext::new(&mut store, None);
-        let btn = Button::new("Test").build(&mut ctx);
-        let json = btn.to_json();
-        assert_eq!(json["id"], "w-0");
-        assert_eq!(json["type"], "button");
+        let mut element: Element = Button::new("Test").into();
+        element.assign_ids(&mut ctx);
+        if let Element::Widget(ref w) = element {
+            let json = w.to_json();
+            assert_eq!(json["id"], "w-0");
+            assert_eq!(json["type"], "button");
+        } else {
+            panic!("Expected Element::Widget");
+        }
     }
 
     #[test]
     fn test_button_build_registers_handler() {
         let mut store = HookStore::default();
         let mut ctx = BuildContext::new(&mut store, None);
-        let btn = Button::new("Click").on_click(|| {}).build(&mut ctx);
-        assert_eq!(btn.id, Some("w-0".to_string()));
-        assert!(json!({"hasOnClick": true})["hasOnClick"].as_bool().unwrap());
-        let json = btn.to_json();
-        assert_eq!(json["hasOnClick"], true);
+        let mut element: Element = Button::new("Click").on_click(|| {}).into();
+        element.assign_ids(&mut ctx);
+        if let Element::Widget(ref w) = element {
+            assert_eq!(w.get_id(), Some("w-0"));
+            assert!(json!({"hasOnClick": true})["hasOnClick"].as_bool().unwrap());
+            let json = w.to_json();
+            assert_eq!(json["hasOnClick"], true);
+        } else {
+            panic!("Expected Element::Widget");
+        }
     }
 }

@@ -621,46 +621,72 @@ mod tests {
     fn test_text_input_json_includes_id() {
         let mut store = HookStore::default();
         let mut ctx = BuildContext::new(&mut store, None);
-        let input = TextInput::new().build(&mut ctx);
-        let json = input.to_json();
-        assert_eq!(json["id"], "w-0");
-        assert_eq!(json["type"], "text_input");
+        let mut element: Element = TextInput::new().into();
+        element.assign_ids(&mut ctx);
+        if let Element::Widget(ref w) = element {
+            let json = w.to_json();
+            assert_eq!(json["id"], "w-0");
+            assert_eq!(json["type"], "text_input");
+        } else {
+            panic!("Expected Element::Widget");
+        }
     }
 
     #[test]
     fn test_number_input_json_includes_id() {
         let mut store = HookStore::default();
         let mut ctx = BuildContext::new(&mut store, None);
-        let input = NumberInput::new().build(&mut ctx);
-        let json = input.to_json();
-        assert_eq!(json["id"], "w-0");
+        let mut element: Element = NumberInput::new().into();
+        element.assign_ids(&mut ctx);
+        if let Element::Widget(ref w) = element {
+            let json = w.to_json();
+            assert_eq!(json["id"], "w-0");
+        } else {
+            panic!("Expected Element::Widget");
+        }
     }
 
     #[test]
     fn test_select_json_includes_id() {
         let mut store = HookStore::default();
         let mut ctx = BuildContext::new(&mut store, None);
-        let select = Select::new(vec![]).build(&mut ctx);
-        let json = select.to_json();
-        assert_eq!(json["id"], "w-0");
+        let mut element: Element = Select::new(vec![]).into();
+        element.assign_ids(&mut ctx);
+        if let Element::Widget(ref w) = element {
+            let json = w.to_json();
+            assert_eq!(json["id"], "w-0");
+        } else {
+            panic!("Expected Element::Widget");
+        }
     }
 
     #[test]
     fn test_checkbox_json_includes_id() {
         let mut store = HookStore::default();
         let mut ctx = BuildContext::new(&mut store, None);
-        let cb = Checkbox::new(false).build(&mut ctx);
-        let json = cb.to_json();
-        assert_eq!(json["id"], "w-0");
+        let mut element: Element = Checkbox::new(false).into();
+        element.assign_ids(&mut ctx);
+        if let Element::Widget(ref w) = element {
+            let json = w.to_json();
+            assert_eq!(json["id"], "w-0");
+        } else {
+            panic!("Expected Element::Widget");
+        }
     }
 
     #[test]
     fn test_widget_ids_are_sequential() {
         let mut store = HookStore::default();
         let mut ctx = BuildContext::new(&mut store, None);
-        let input1 = TextInput::new().build(&mut ctx);
-        let input2 = TextInput::new().build(&mut ctx);
-        assert_eq!(input1.id, Some("w-0".to_string()));
-        assert_eq!(input2.id, Some("w-1".to_string()));
+        let mut el1: Element = TextInput::new().into();
+        let mut el2: Element = TextInput::new().into();
+        el1.assign_ids(&mut ctx);
+        el2.assign_ids(&mut ctx);
+        if let (Element::Widget(ref w1), Element::Widget(ref w2)) = (&el1, &el2) {
+            assert_eq!(w1.get_id(), Some("w-0"));
+            assert_eq!(w2.get_id(), Some("w-1"));
+        } else {
+            panic!("Expected Element::Widget");
+        }
     }
 }

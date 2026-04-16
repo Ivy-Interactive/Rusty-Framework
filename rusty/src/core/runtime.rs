@@ -311,14 +311,13 @@ mod tests {
         }
 
         impl View for ClickView {
-            fn build(&self, ctx: &mut BuildContext) -> Element {
+            fn build(&self, _ctx: &mut BuildContext) -> Element {
                 let clicked = self.clicked.clone();
-                let btn = Button::new("Click me")
+                Button::new("Click me")
                     .on_click(move || {
                         clicked.store(true, Ordering::SeqCst);
                     })
-                    .build(ctx);
-                Element::Widget(Box::new(btn))
+                    .into()
             }
         }
 
@@ -355,15 +354,14 @@ mod tests {
         }
 
         impl View for InputView {
-            fn build(&self, ctx: &mut BuildContext) -> Element {
+            fn build(&self, _ctx: &mut BuildContext) -> Element {
                 let received = self.received.clone();
-                let input = crate::widgets::input::TextInput::new()
+                crate::widgets::input::TextInput::new()
                     .on_change(move |val| {
                         let mut r = received.lock().unwrap();
                         *r = val;
                     })
-                    .build(ctx);
-                Element::Widget(Box::new(input))
+                    .into()
             }
         }
 
