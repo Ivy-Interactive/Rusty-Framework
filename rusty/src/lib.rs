@@ -7,7 +7,7 @@ pub mod widgets;
 
 /// Prelude module for convenient imports.
 pub mod prelude {
-    pub use crate::core::Runtime;
+    pub use crate::core::{Runtime, ViewTree};
     pub use crate::hooks::{
         create_context, use_callback, use_context, use_effect, use_effect_with_deps, use_interval,
         use_memo, use_reducer, use_ref, use_state, DynEq, Ref, State,

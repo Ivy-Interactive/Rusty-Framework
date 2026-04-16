@@ -1,9 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::any::Any;
+use std::collections::hash_map::DefaultHasher;
 use std::fmt::Debug;
+use std::hash::{Hash, Hasher};
 
 use crate::core::event_registry::{EventCallback, EventRegistry};
 use crate::hooks::hook_store::HookStore;
+use crate::shared::ViewId;
 
 /// Trait for serializable UI widgets sent to the client.
 pub trait Widget: Send + Sync + Debug + 'static {
@@ -123,10 +126,17 @@ pub struct BuildContext<'a> {
     hook_index: usize,
     pub(crate) store: &'a mut HookStore,
     effects: Vec<EffectRecord>,
-    /// Sender for triggering rebuilds when state changes.
-    rebuild_tx: Option<tokio::sync::mpsc::Sender<()>>,
+    /// Sender for triggering rebuilds when state changes (carries the ViewId that changed).
+    rebuild_tx: Option<tokio::sync::mpsc::Sender<ViewId>>,
+    /// The ViewId of the view currently being built.
+    pub(crate) current_view_id: ViewId,
     event_registry: EventRegistry,
     widget_id_counter: usize,
+    /// Child views registered during this build via `child_view()`.
+    pub(crate) child_views: Vec<ChildViewEntry>,
+    /// Access to ancestor HookStores for context lookup (read-only view).
+    /// Maps ViewId -> reference to ancestor contexts.
+    pub(crate) ancestor_contexts: Vec<(ViewId, *const HookStore)>,
 }
 
 /// Cleanup function returned by an effect callback.
@@ -141,18 +151,36 @@ pub struct EffectRecord {
     pub hook_index: usize,
 }
 
+/// Entry for a child view registered during build via `child_view()`.
+pub struct ChildViewEntry {
+    pub child_view_id: ViewId,
+    pub view: Box<dyn View>,
+    pub element: Element,
+}
+
 impl<'a> BuildContext<'a> {
     pub fn new(
         store: &'a mut HookStore,
-        rebuild_tx: Option<tokio::sync::mpsc::Sender<()>>,
+        rebuild_tx: Option<tokio::sync::mpsc::Sender<ViewId>>,
+    ) -> Self {
+        BuildContext::with_view_id(store, rebuild_tx, uuid::Uuid::nil())
+    }
+
+    pub fn with_view_id(
+        store: &'a mut HookStore,
+        rebuild_tx: Option<tokio::sync::mpsc::Sender<ViewId>>,
+        view_id: ViewId,
     ) -> Self {
         BuildContext {
             hook_index: 0,
             store,
             effects: Vec::new(),
             rebuild_tx,
+            current_view_id: view_id,
             event_registry: EventRegistry::new(),
             widget_id_counter: 0,
+            child_views: Vec::new(),
+            ancestor_contexts: Vec::new(),
         }
     }
 
@@ -192,8 +220,9 @@ impl<'a> BuildContext<'a> {
     }
 
     /// Get a clone of the rebuild sender (for State to trigger re-renders).
-    pub fn rebuild_sender(&self) -> Option<tokio::sync::mpsc::Sender<()>> {
-        self.rebuild_tx.clone()
+    /// The sender carries the ViewId so the runtime knows which subtree to rebuild.
+    pub fn rebuild_sender(&self) -> Option<(tokio::sync::mpsc::Sender<ViewId>, ViewId)> {
+        self.rebuild_tx.clone().map(|tx| (tx, self.current_view_id))
     }
 
     /// Register an effect to run after build with cleanup support.
@@ -207,6 +236,109 @@ impl<'a> BuildContext<'a> {
     /// Drain all registered effects (called by runtime after build).
     pub fn drain_effects(&mut self) -> Vec<EffectRecord> {
         std::mem::take(&mut self.effects)
+    }
+
+    /// Drain child views registered during this build.
+    pub fn drain_child_views(&mut self) -> Vec<ChildViewEntry> {
+        std::mem::take(&mut self.child_views)
+    }
+
+    /// Compute a deterministic child ViewId from parent ViewId + child index.
+    fn child_view_id(&self, child_index: usize) -> ViewId {
+        let mut hasher = DefaultHasher::new();
+        self.current_view_id.hash(&mut hasher);
+        child_index.hash(&mut hasher);
+        let hash = hasher.finish();
+        let bytes = hash.to_le_bytes();
+        uuid::Uuid::from_bytes([
+            bytes[0],
+            bytes[1],
+            bytes[2],
+            bytes[3],
+            bytes[4],
+            bytes[5],
+            bytes[6],
+            bytes[7],
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            (child_index & 0xFF) as u8,
+        ])
+    }
+
+    /// Embed a child view within the current view's build output.
+    ///
+    /// Assigns a stable ViewId based on the call-site index within the parent
+    /// (similar to hook ordering). The child view gets its own HookStore and
+    /// is registered in the ViewTree under the current view.
+    ///
+    /// The `child_store` parameter is an optional pre-existing HookStore for this child.
+    /// If None, a fresh store is created. Pass in the store from previous builds to
+    /// preserve hook state across re-renders.
+    pub fn child_view(
+        &mut self,
+        view: impl View,
+        child_store: Option<&mut HookStore>,
+    ) -> (Element, ViewId, HookStore) {
+        let child_index = self.child_views.len();
+        let child_view_id = self.child_view_id(child_index);
+
+        let mut owned_store = child_store.map(std::mem::take).unwrap_or_default();
+
+        let mut child_ctx =
+            BuildContext::with_view_id(&mut owned_store, self.rebuild_tx.clone(), child_view_id);
+        child_ctx.reset();
+        // Set ancestor contexts: current view's store + all ancestors above
+        child_ctx.ancestor_contexts = self.ancestor_contexts.clone();
+        child_ctx
+            .ancestor_contexts
+            .push((self.current_view_id, self.store as *const HookStore));
+
+        let mut element = view.build(&mut child_ctx);
+        element.assign_ids(&mut child_ctx);
+
+        // Merge child's event registry into parent's
+        let child_registry = child_ctx.take_event_registry();
+        self.event_registry.merge(child_registry);
+
+        // Collect child effects into parent
+        let child_effects = child_ctx.drain_effects();
+        self.effects.extend(child_effects);
+
+        // Collect nested child views
+        let nested_children = child_ctx.drain_child_views();
+        self.child_views.extend(nested_children);
+
+        self.child_views.push(ChildViewEntry {
+            child_view_id,
+            view: Box::new(view),
+            element: element.clone(),
+        });
+
+        (element, child_view_id, owned_store)
+    }
+
+    /// Look up a context value by TypeId, walking the ancestor chain.
+    /// Returns None if not found in any ancestor.
+    pub fn find_ancestor_context(&self, type_id: std::any::TypeId) -> Option<&dyn Any> {
+        // First check current store
+        if let Some(val) = self.store.contexts.get(&type_id) {
+            return Some(val.as_ref());
+        }
+        // Walk ancestors from nearest to farthest
+        for (_view_id, store_ptr) in self.ancestor_contexts.iter().rev() {
+            // SAFETY: ancestor_contexts are set up during build traversal and the
+            // stores remain valid for the duration of the build
+            let store = unsafe { &**store_ptr };
+            if let Some(val) = store.contexts.get(&type_id) {
+                return Some(val.as_ref());
+            }
+        }
+        None
     }
 }
 

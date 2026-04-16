@@ -15,7 +15,11 @@ where
     F: Fn() + Send + Sync + 'static,
 {
     let idx = ctx.next_hook_index();
-    let rebuild_tx = ctx.rebuild_sender();
+    let rebuild_info = ctx.rebuild_sender();
+    let (rebuild_tx, view_id) = match rebuild_info {
+        Some((tx, vid)) => (Some(tx), vid),
+        None => (None, crate::shared::ViewId::nil()),
+    };
 
     // Always register/re-register the interval effect
     let entry = ctx.store.effects.entry(idx).or_insert_with(|| EffectEntry {
@@ -38,9 +42,9 @@ where
                     loop {
                         interval.tick().await;
                         callback();
-                        // Optionally trigger rebuild
+                        // Optionally trigger rebuild with owning ViewId
                         if let Some(ref tx) = rebuild_tx {
-                            let _ = tx.try_send(());
+                            let _ = tx.try_send(view_id);
                         }
                     }
                 });
