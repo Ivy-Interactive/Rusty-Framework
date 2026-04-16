@@ -527,8 +527,13 @@ mod tests {
 
         element.assign_ids(&mut ctx);
 
-        if let Element::Widget(tooltip) = &element {
+        if let Element::Widget(tooltip) = &mut element {
             assert_eq!(tooltip.get_id(), Some("w-0"));
+            if let Some(Element::Widget(child)) = tooltip.single_child_mut() {
+                assert_eq!(child.get_id(), Some("w-1"));
+            } else {
+                panic!("Expected Tooltip child to be a Widget");
+            }
         }
     }
 
