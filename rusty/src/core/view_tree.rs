@@ -169,6 +169,7 @@ mod tests {
     use super::*;
     use crate::views::view::{BuildContext, Element};
 
+    #[allow(dead_code)]
     struct DummyView(String);
     impl View for DummyView {
         fn build(&self, _ctx: &mut BuildContext) -> Element {
