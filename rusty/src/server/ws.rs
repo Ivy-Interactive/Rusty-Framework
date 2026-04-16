@@ -150,57 +150,73 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
     // Generate a unique connection ID and create an isolated session
     let connection_id = Uuid::new_v4().to_string();
-    let mut session = state
+    let session_arc = state
         .session_store
         .create_session(connection_id.clone())
         .await;
+    let mut shutdown_rx = state.session_store.subscribe_shutdown();
 
     // Send initial render from this session's own runtime
-    if let Some(tree) = session.runtime.current_tree().await {
-        let msg = ServerMessage::Refresh {
-            widgets: tree.clone(),
-        };
-        session.reconciler.reconcile(&tree);
-        if let Ok(json) = serde_json::to_string(&msg) {
-            let _ = sender.send(Message::Text(json.into())).await;
+    {
+        let mut session = session_arc.write().await;
+        if let Some(tree) = session.runtime.current_tree().await {
+            let msg = ServerMessage::Refresh {
+                widgets: tree.clone(),
+            };
+            session.reconciler.reconcile(&tree);
+            if let Ok(json) = serde_json::to_string(&msg) {
+                let _ = sender.send(Message::Text(json.into())).await;
+            }
         }
     }
-    let event_tx = session.runtime.event_sender();
+    let event_tx = session_arc.read().await.runtime.event_sender();
 
     // Process incoming messages using this session's isolated runtime
-    while let Some(Ok(msg)) = receiver.next().await {
-        if let Message::Text(text) = msg {
-            if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
-                match client_msg {
-                    ClientMessage::Event {
-                        widget_id,
-                        event_name,
-                        args,
-                    } => {
-                        let _ = event_tx
-                            .send(RuntimeMessage::Event {
-                                widget_id,
-                                event_name,
-                                args,
-                            })
-                            .await;
+    loop {
+        tokio::select! {
+            msg = receiver.next() => {
+                match msg {
+                    Some(Ok(Message::Text(text))) => {
+                        if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
+                            match client_msg {
+                                ClientMessage::Event {
+                                    widget_id,
+                                    event_name,
+                                    args,
+                                } => {
+                                    let _ = event_tx
+                                        .send(RuntimeMessage::Event {
+                                            widget_id,
+                                            event_name,
+                                            args,
+                                        })
+                                        .await;
 
-                        // After event, get updated tree from this session's runtime
-                        if let Some(tree) = session.runtime.current_tree().await {
-                            if let Some(patches) = session.reconciler.reconcile(&tree) {
-                                if !patches.is_empty() {
-                                    let msg = ServerMessage::Update { patches };
-                                    if let Ok(json) = serde_json::to_string(&msg) {
-                                        let _ = sender.send(Message::Text(json.into())).await;
+                                    // After event, get updated tree from this session's runtime
+                                    let mut session = session_arc.write().await;
+                                    if let Some(tree) = session.runtime.current_tree().await {
+                                        if let Some(patches) = session.reconciler.reconcile(&tree) {
+                                            if !patches.is_empty() {
+                                                let msg = ServerMessage::Update { patches };
+                                                if let Ok(json) = serde_json::to_string(&msg) {
+                                                    let _ = sender.send(Message::Text(json.into())).await;
+                                                }
+                                            }
+                                        }
                                     }
+                                }
+                                ClientMessage::Navigate { .. } => {
+                                    // Navigation handling (future)
                                 }
                             }
                         }
                     }
-                    ClientMessage::Navigate { .. } => {
-                        // Navigation handling (future)
-                    }
+                    Some(Ok(_)) => {} // Ignore non-text messages
+                    _ => break, // Connection closed or error
                 }
+            }
+            _ = shutdown_rx.recv() => {
+                break;
             }
         }
     }
