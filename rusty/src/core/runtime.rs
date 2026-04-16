@@ -16,6 +16,10 @@ pub enum RuntimeMessage {
         event_name: String,
         args: serde_json::Value,
     },
+    Navigate {
+        app_id: String,
+        state: serde_json::Value,
+    },
     Rebuild {
         view_id: ViewId,
     },
@@ -29,6 +33,7 @@ pub struct Runtime {
     hook_stores: HashMap<ViewId, HookStore>,
     dirty_views: HashSet<ViewId>,
     event_registry: Arc<RwLock<EventRegistry>>,
+    nav_handler: Option<Arc<dyn Fn(String, serde_json::Value) + Send + Sync>>,
     event_tx: mpsc::Sender<RuntimeMessage>,
     event_rx: mpsc::Receiver<RuntimeMessage>,
     rebuild_tx: mpsc::Sender<ViewId>,
@@ -46,6 +51,7 @@ impl Runtime {
             hook_stores: HashMap::new(),
             dirty_views: HashSet::new(),
             event_registry: Arc::new(RwLock::new(EventRegistry::new())),
+            nav_handler: None,
             event_tx,
             event_rx,
             rebuild_tx,
@@ -56,6 +62,14 @@ impl Runtime {
     /// Get a sender for dispatching events to the runtime.
     pub fn event_sender(&self) -> mpsc::Sender<RuntimeMessage> {
         self.event_tx.clone()
+    }
+
+    /// Register a navigation handler that will be called when Navigate messages are received.
+    pub fn set_nav_handler<F>(&mut self, handler: F)
+    where
+        F: Fn(String, serde_json::Value) + Send + Sync + 'static,
+    {
+        self.nav_handler = Some(Arc::new(handler));
     }
 
     /// Get a clone of the rebuild sender (for passing to State handles).
@@ -165,6 +179,12 @@ impl Runtime {
                             {
                                 let registry = self.event_registry.read().await;
                                 registry.dispatch(&widget_id, &event_name, args);
+                            }
+                            let _ = self.build().await;
+                        }
+                        Some(RuntimeMessage::Navigate { app_id, state }) => {
+                            if let Some(handler) = &self.nav_handler {
+                                handler(app_id, state);
                             }
                             let _ = self.build().await;
                         }
@@ -532,6 +552,64 @@ mod tests {
             "Expected child to read parent context, got: {}",
             json
         );
+    }
+
+    #[tokio::test]
+    async fn test_navigate_dispatches_to_handler() {
+        let received_app_id = Arc::new(Mutex::new(String::new()));
+        let received_state = Arc::new(Mutex::new(serde_json::Value::Null));
+        let app_id_clone = received_app_id.clone();
+        let state_clone = received_state.clone();
+
+        let mut runtime = Runtime::new(TestView);
+        runtime.set_nav_handler(move |app_id, state| {
+            *app_id_clone.lock().unwrap() = app_id;
+            *state_clone.lock().unwrap() = state;
+        });
+
+        let _ = runtime.build().await;
+
+        let tx = runtime.event_sender();
+        tx.send(RuntimeMessage::Navigate {
+            app_id: "my-app".to_string(),
+            state: serde_json::json!({"path": "/home"}),
+        })
+        .await
+        .unwrap();
+
+        tx.send(RuntimeMessage::Shutdown).await.unwrap();
+
+        runtime.run().await;
+
+        assert_eq!(*received_app_id.lock().unwrap(), "my-app");
+        assert_eq!(
+            *received_state.lock().unwrap(),
+            serde_json::json!({"path": "/home"})
+        );
+    }
+
+    #[tokio::test]
+    async fn test_navigate_without_handler_is_noop() {
+        let mut runtime = Runtime::new(TestView);
+
+        let _ = runtime.build().await;
+
+        let tx = runtime.event_sender();
+        tx.send(RuntimeMessage::Navigate {
+            app_id: "my-app".to_string(),
+            state: serde_json::json!({"path": "/about"}),
+        })
+        .await
+        .unwrap();
+
+        tx.send(RuntimeMessage::Shutdown).await.unwrap();
+
+        // Should not panic — navigate without handler is a no-op
+        runtime.run().await;
+
+        // Verify the runtime still works — tree should exist after rebuild
+        let tree = runtime.current_tree().await;
+        assert!(tree.is_some());
     }
 
     #[test]
