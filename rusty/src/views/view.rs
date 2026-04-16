@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::fmt::Debug;
 
+use crate::hooks::hook_store::HookStore;
+
 /// Trait for serializable UI widgets sent to the client.
 pub trait Widget: Send + Sync + Debug + 'static {
     /// The widget type name (e.g., "button", "text_block").
@@ -60,19 +62,45 @@ pub trait View: Send + Sync + 'static {
 }
 
 /// Context passed to View::build providing access to hooks and state.
-pub struct BuildContext {
+///
+/// Holds a mutable reference to a `HookStore` that persists across re-renders,
+/// analogous to Ivy-Framework's `ViewContext` with its `_hooks` dictionary.
+pub struct BuildContext<'a> {
     hook_index: usize,
-    states: Vec<Box<dyn Any + Send + Sync>>,
-    effects: Vec<Box<dyn FnOnce() + Send>>,
+    pub(crate) store: &'a mut HookStore,
+    effects: Vec<EffectRecord>,
+    /// Sender for triggering rebuilds when state changes.
+    rebuild_tx: Option<tokio::sync::mpsc::Sender<()>>,
 }
 
-impl BuildContext {
-    pub fn new() -> Self {
+/// Cleanup function returned by an effect callback.
+pub type EffectCleanup = Box<dyn FnOnce() + Send + Sync>;
+
+/// The boxed effect callback type (returns an optional cleanup function).
+pub type EffectCallback = Box<dyn FnOnce() -> Option<EffectCleanup> + Send>;
+
+/// An effect registered during a build, to be processed by the runtime.
+pub struct EffectRecord {
+    pub callback: EffectCallback,
+    pub hook_index: usize,
+}
+
+impl<'a> BuildContext<'a> {
+    pub fn new(
+        store: &'a mut HookStore,
+        rebuild_tx: Option<tokio::sync::mpsc::Sender<()>>,
+    ) -> Self {
         BuildContext {
             hook_index: 0,
-            states: Vec::new(),
+            store,
             effects: Vec::new(),
+            rebuild_tx,
         }
+    }
+
+    /// Reset hook index to 0 between builds (like Ivy's ViewContext.Reset()).
+    pub fn reset(&mut self) {
+        self.hook_index = 0;
     }
 
     /// Get the next hook index (for hooks to track call order).
@@ -82,25 +110,22 @@ impl BuildContext {
         idx
     }
 
-    /// Store a state value for a hook.
-    pub fn store_state(&mut self, state: Box<dyn Any + Send + Sync>) {
-        self.states.push(state);
+    /// Get a clone of the rebuild sender (for State to trigger re-renders).
+    pub fn rebuild_sender(&self) -> Option<tokio::sync::mpsc::Sender<()>> {
+        self.rebuild_tx.clone()
     }
 
-    /// Register an effect to run after build.
-    pub fn register_effect(&mut self, effect: Box<dyn FnOnce() + Send>) {
-        self.effects.push(effect);
+    /// Register an effect to run after build with cleanup support.
+    pub fn register_effect(&mut self, hook_index: usize, callback: EffectCallback) {
+        self.effects.push(EffectRecord {
+            callback,
+            hook_index,
+        });
     }
 
     /// Drain all registered effects (called by runtime after build).
-    pub fn drain_effects(&mut self) -> Vec<Box<dyn FnOnce() + Send>> {
+    pub fn drain_effects(&mut self) -> Vec<EffectRecord> {
         std::mem::take(&mut self.effects)
-    }
-}
-
-impl Default for BuildContext {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
