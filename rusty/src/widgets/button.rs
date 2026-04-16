@@ -1,3 +1,4 @@
+use crate::core::event_registry::EventRegistry;
 use crate::shared::{Color, Density, Icon};
 use crate::views::view::{BuildContext, Element, WidgetData};
 use serde::{Deserialize, Serialize};
@@ -96,6 +97,7 @@ impl Button {
     }
 
     /// Assign a widget ID from the BuildContext and register event handlers.
+    #[deprecated(note = "Widget IDs are now assigned automatically. Remove .build(ctx) calls.")]
     pub fn build(mut self, ctx: &mut BuildContext) -> Self {
         let widget_id = ctx.next_widget_id();
         self.id = Some(widget_id.clone());
@@ -133,6 +135,21 @@ impl WidgetData for Button {
 
     fn clone_box(&self) -> Box<dyn WidgetData> {
         Box::new(self.clone())
+    }
+
+    fn assign_id(&mut self, id: String) {
+        self.id = Some(id);
+    }
+
+    fn get_id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+
+    fn register_events(&self, widget_id: &str, registry: &mut EventRegistry) {
+        if let Some(handler) = &self.on_click {
+            let handler = handler.clone();
+            registry.register(widget_id, "click", Arc::new(move |_args| handler()));
+        }
     }
 }
 

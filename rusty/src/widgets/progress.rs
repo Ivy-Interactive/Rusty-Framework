@@ -42,6 +42,7 @@ impl Progress {
     }
 
     /// Assign a widget ID from the BuildContext.
+    #[deprecated(note = "Widget IDs are now assigned automatically. Remove .build(ctx) calls.")]
     pub fn build(mut self, ctx: &mut BuildContext) -> Self {
         self.id = Some(ctx.next_widget_id());
         self
@@ -86,6 +87,14 @@ impl WidgetData for Progress {
 
     fn clone_box(&self) -> Box<dyn WidgetData> {
         Box::new(self.clone())
+    }
+
+    fn assign_id(&mut self, id: String) {
+        self.id = Some(id);
+    }
+
+    fn get_id(&self) -> Option<&str> {
+        self.id.as_deref()
     }
 }
 
