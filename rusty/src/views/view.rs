@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 use crate::core::event_registry::{EventCallback, EventRegistry};
 use crate::hooks::hook_store::HookStore;
@@ -134,9 +136,9 @@ pub struct BuildContext<'a> {
     widget_id_counter: usize,
     /// Child views registered during this build via `child_view()`.
     pub(crate) child_views: Vec<ChildViewEntry>,
-    /// Access to ancestor HookStores for context lookup (read-only view).
-    /// Maps ViewId -> reference to ancestor contexts.
-    pub(crate) ancestor_contexts: Vec<(ViewId, *const HookStore)>,
+    /// Cloned snapshots of ancestor context maps for safe context lookup.
+    /// Each entry is a (ViewId, context map) pair, cheaply cloned via Arc.
+    pub(crate) ancestor_contexts: Vec<(ViewId, HashMap<TypeId, Arc<dyn Any + Send + Sync>>)>,
 }
 
 /// Cleanup function returned by an effect callback.
@@ -292,11 +294,12 @@ impl<'a> BuildContext<'a> {
         let mut child_ctx =
             BuildContext::with_view_id(&mut owned_store, self.rebuild_tx.clone(), child_view_id);
         child_ctx.reset();
-        // Set ancestor contexts: current view's store + all ancestors above
+        // Set ancestor contexts: current view's store + all ancestors above.
+        // Clone via Arc::clone per entry (cheap reference count bump).
         child_ctx.ancestor_contexts = self.ancestor_contexts.clone();
         child_ctx
             .ancestor_contexts
-            .push((self.current_view_id, self.store as *const HookStore));
+            .push((self.current_view_id, self.store.contexts.clone()));
 
         let mut element = view.build(&mut child_ctx);
         element.assign_ids(&mut child_ctx);
@@ -329,12 +332,9 @@ impl<'a> BuildContext<'a> {
         if let Some(val) = self.store.contexts.get(&type_id) {
             return Some(val.as_ref());
         }
-        // Walk ancestors from nearest to farthest
-        for (_view_id, store_ptr) in self.ancestor_contexts.iter().rev() {
-            // SAFETY: ancestor_contexts are set up during build traversal and the
-            // stores remain valid for the duration of the build
-            let store = unsafe { &**store_ptr };
-            if let Some(val) = store.contexts.get(&type_id) {
+        // Walk ancestors from nearest to farthest (safe — no raw pointers)
+        for (_view_id, contexts) in self.ancestor_contexts.iter().rev() {
+            if let Some(val) = contexts.get(&type_id) {
                 return Some(val.as_ref());
             }
         }

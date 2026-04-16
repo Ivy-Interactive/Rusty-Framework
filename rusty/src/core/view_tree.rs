@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::shared::ViewId;
 use crate::views::view::View;
@@ -6,7 +7,7 @@ use crate::views::view::View;
 /// A node in the view tree, representing a single view with its parent/child relationships.
 pub struct ViewNode {
     pub view_id: ViewId,
-    pub view: Box<dyn View>,
+    pub view: Arc<dyn View>,
     pub parent: Option<ViewId>,
     pub children: Vec<ViewId>,
 }
@@ -28,7 +29,7 @@ impl ViewTree {
         let root_id = uuid::Uuid::new_v4();
         let root_node = ViewNode {
             view_id: root_id,
-            view: root_view,
+            view: Arc::from(root_view),
             parent: None,
             children: Vec::new(),
         };
@@ -47,7 +48,7 @@ impl ViewTree {
         let child_id = uuid::Uuid::new_v4();
         let child_node = ViewNode {
             view_id: child_id,
-            view,
+            view: Arc::from(view),
             parent: Some(parent_id),
             children: Vec::new(),
         };
@@ -67,7 +68,7 @@ impl ViewTree {
     ) -> ViewId {
         let child_node = ViewNode {
             view_id: child_id,
-            view,
+            view: Arc::from(view),
             parent: Some(parent_id),
             children: Vec::new(),
         };
