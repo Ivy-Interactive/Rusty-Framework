@@ -114,6 +114,9 @@ impl Element {
     }
 }
 
+/// A snapshot of a view's context map, cheaply clonable via `Arc`.
+pub type ContextSnapshot = HashMap<TypeId, Arc<dyn Any + Send + Sync>>;
+
 /// A stateful component that produces an element tree.
 pub trait View: Send + Sync + 'static {
     /// Build the element tree for this view.
@@ -138,7 +141,7 @@ pub struct BuildContext<'a> {
     pub(crate) child_views: Vec<ChildViewEntry>,
     /// Cloned snapshots of ancestor context maps for safe context lookup.
     /// Each entry is a (ViewId, context map) pair, cheaply cloned via Arc.
-    pub(crate) ancestor_contexts: Vec<(ViewId, HashMap<TypeId, Arc<dyn Any + Send + Sync>>)>,
+    pub(crate) ancestor_contexts: Vec<(ViewId, ContextSnapshot)>,
 }
 
 /// Cleanup function returned by an effect callback.
