@@ -66,7 +66,12 @@ impl Runtime {
         let store = self.hook_stores.entry(self.root_view_id).or_default();
         let mut ctx = BuildContext::new(store, Some(self.rebuild_tx.clone()));
         ctx.reset();
-        let element = self.root.build(&mut ctx);
+        let mut element = self.root.build(&mut ctx);
+
+        // Automatic widget ID assignment: walk the tree and assign IDs
+        // to any widgets that don't already have one, and register their events.
+        // This mirrors Ivy Framework's WidgetTree.BuildWidget() pattern.
+        element.assign_ids(&mut ctx);
 
         // Extract the event registry populated during build
         let registry = ctx.take_event_registry();
@@ -165,6 +170,79 @@ mod tests {
         let tree = runtime.build().await;
         let json = serde_json::to_value(&tree).unwrap();
         assert!(json.to_string().contains("Hello from runtime"));
+    }
+
+    #[tokio::test]
+    async fn test_runtime_build_assigns_ids_automatically() {
+        use crate::widgets::layout::Layout;
+
+        struct AutoIdView;
+
+        impl View for AutoIdView {
+            fn build(&self, _ctx: &mut BuildContext) -> Element {
+                Layout::vertical()
+                    .child(TextBlock::new("First"))
+                    .child(TextBlock::new("Second"))
+                    .child(Button::new("Click"))
+                    .into()
+            }
+        }
+
+        let mut runtime = Runtime::new(AutoIdView);
+        let tree = runtime.build().await;
+        let json = serde_json::to_value(&tree).unwrap();
+        let json_str = json.to_string();
+
+        // All widgets should have auto-assigned IDs
+        assert!(json_str.contains("\"id\":\"w-0\"")); // Layout
+        assert!(json_str.contains("\"id\":\"w-1\"")); // TextBlock "First"
+        assert!(json_str.contains("\"id\":\"w-2\"")); // TextBlock "Second"
+        assert!(json_str.contains("\"id\":\"w-3\"")); // Button
+    }
+
+    #[tokio::test]
+    async fn test_runtime_auto_id_registers_events() {
+        let clicked = Arc::new(AtomicBool::new(false));
+        let clicked_clone = clicked.clone();
+
+        struct AutoClickView {
+            clicked: Arc<AtomicBool>,
+        }
+
+        impl View for AutoClickView {
+            fn build(&self, _ctx: &mut BuildContext) -> Element {
+                let clicked = self.clicked.clone();
+                // No .build(ctx) call — relies on automatic ID assignment
+                Button::new("Auto Click")
+                    .on_click(move || {
+                        clicked.store(true, Ordering::SeqCst);
+                    })
+                    .into()
+            }
+        }
+
+        let mut runtime = Runtime::new(AutoClickView {
+            clicked: clicked_clone.clone(),
+        });
+
+        let _ = runtime.build().await;
+
+        // Send click event to the auto-assigned ID
+        let tx = runtime.event_sender();
+        tx.send(RuntimeMessage::Event {
+            widget_id: "w-0".to_string(),
+            event_name: "click".to_string(),
+            args: serde_json::Value::Null,
+        })
+        .await
+        .unwrap();
+
+        tokio::spawn(async move {
+            runtime.run().await;
+        });
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert!(clicked_clone.load(Ordering::SeqCst));
     }
 
     #[tokio::test]

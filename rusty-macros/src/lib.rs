@@ -99,6 +99,38 @@ pub fn derive_widget(input: TokenStream) -> TokenStream {
         quote! {}
     };
 
+    let assign_id_impl = if has_id_field {
+        quote! {
+            fn assign_id(&mut self, id: String) {
+                self.id = Some(id);
+            }
+
+            fn get_id(&self) -> Option<&str> {
+                self.id.as_deref()
+            }
+        }
+    } else {
+        quote! {
+            fn assign_id(&mut self, _id: String) {}
+            fn get_id(&self) -> Option<&str> { None }
+        }
+    };
+
+    // Detect children field (Vec<Element>) for container widgets
+    let has_children_field = fields
+        .iter()
+        .any(|f| f.ident.as_ref().is_some_and(|i| i == "children"));
+
+    let children_mut_impl = if has_children_field {
+        quote! {
+            fn children_mut(&mut self) -> Option<&mut Vec<crate::views::view::Element>> {
+                Some(&mut self.children)
+            }
+        }
+    } else {
+        quote! {}
+    };
+
     let expanded = quote! {
         impl crate::views::view::WidgetData for #name {
             fn widget_type(&self) -> &str {
@@ -117,6 +149,9 @@ pub fn derive_widget(input: TokenStream) -> TokenStream {
             fn clone_box(&self) -> Box<dyn crate::views::view::WidgetData> {
                 Box::new(self.clone())
             }
+
+            #assign_id_impl
+            #children_mut_impl
         }
     };
 
