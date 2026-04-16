@@ -1,5 +1,5 @@
 use crate::shared::Color;
-use crate::views::view::{Element, WidgetData};
+use crate::views::view::{BuildContext, Element, WidgetData};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -21,6 +21,8 @@ pub enum TextVariant {
 /// A text rendering widget.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextBlock {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub content: String,
     pub variant: TextVariant,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -32,12 +34,19 @@ pub struct TextBlock {
 impl TextBlock {
     pub fn new(content: &str) -> Self {
         TextBlock {
+            id: None,
             content: content.to_string(),
             variant: TextVariant::Block,
             color: None,
             bold: false,
             italic: false,
         }
+    }
+
+    /// Assign a widget ID from the BuildContext (no event handlers for text).
+    pub fn build(mut self, ctx: &mut BuildContext) -> Self {
+        self.id = Some(ctx.next_widget_id());
+        self
     }
 
     pub fn h1(content: &str) -> Self {
@@ -101,6 +110,7 @@ impl WidgetData for TextBlock {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "type": "text_block",
+            "id": self.id,
             "content": self.content,
             "variant": self.variant,
             "color": self.color,
