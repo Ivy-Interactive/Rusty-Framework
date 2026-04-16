@@ -39,7 +39,7 @@ impl Runtime {
     pub fn new(root: impl View) -> Self {
         let (event_tx, event_rx) = mpsc::channel(2048);
         let (rebuild_tx, rebuild_rx) = mpsc::channel(256);
-        let view_tree = ViewTree::new(Box::new(root));
+        let view_tree = ViewTree::new(Arc::new(root));
         Runtime {
             view_tree,
             tree: Arc::new(RwLock::new(None)),
@@ -543,9 +543,9 @@ mod tests {
         let cleanup_called_clone = cleanup_called.clone();
 
         // Create a view tree with a child
-        let mut tree = ViewTree::new(Box::new(|_ctx: &mut BuildContext| Element::Empty));
+        let mut tree = ViewTree::new(Arc::new(|_ctx: &mut BuildContext| Element::Empty));
         let root_id = tree.root_id();
-        let child_id = tree.insert(root_id, Box::new(|_ctx: &mut BuildContext| Element::Empty));
+        let child_id = tree.insert(root_id, Arc::new(|_ctx: &mut BuildContext| Element::Empty));
 
         // Set up HookStores with an effect cleanup for the child
         let mut hook_stores: HashMap<ViewId, HookStore> = HashMap::new();
