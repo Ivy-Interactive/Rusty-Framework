@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rusty Widget E2E</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 16px; }
+    [data-widget-type="layout"] { display: flex; }
+    [data-direction="vertical"] { flex-direction: column; }
+    [data-direction="horizontal"] { flex-direction: row; }
+    [data-direction="grid"] { display: grid; }
+    .widget { margin: 2px 0; }
+    button { padding: 8px 16px; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; }
+    button[data-variant="primary"] { background: #0066cc; color: white; border-color: #0066cc; }
+    button[data-variant="secondary"] { background: #6c757d; color: white; border-color: #6c757d; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    input[type="text"], input[type="number"], select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+    .card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; }
+    .card-title { font-weight: bold; font-size: 1.1em; }
+    .card-subtitle { color: #666; font-size: 0.9em; }
+    h1 { font-size: 2em; }
+    h2 { font-size: 1.5em; }
+    h3 { font-size: 1.17em; }
+    code { font-family: monospace; background: #f5f5f5; padding: 2px 4px; border-radius: 2px; }
+    label.checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .field-label { display: block; font-size: 0.85em; font-weight: 600; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <div id="app">Connecting...</div>
+  <script>
+    const app = document.getElementById('app');
+    const wsPort = new URLSearchParams(window.location.search).get('port') || window.location.port;
+    const wsUrl = `ws://${window.location.hostname}:${wsPort}/ws`;
+
+    let ws;
+    function connect() {
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => { app.textContent = 'Connected, waiting for render...'; };
+      ws.onclose = () => { app.textContent = 'Disconnected'; };
+      ws.onerror = () => { app.textContent = 'Connection error'; };
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.method === 'refresh') {
+          app.innerHTML = '';
+          app.appendChild(renderWidget(msg.widgets));
+        } else if (msg.method === 'update') {
+          // For simplicity, request a full refresh on update patches
+          // by re-rendering from the patched tree
+          applyPatches(msg.patches);
+        }
+      };
+    }
+
+    function sendEvent(widgetId, eventName, args) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          method: 'event',
+          widgetId: widgetId,
+          eventName: eventName,
+          args: args || {}
+        }));
+      }
+    }
+
+    function renderWidget(node) {
+      if (!node || typeof node !== 'object') {
+        return document.createTextNode(String(node || ''));
+      }
+
+      const type = node.type;
+      const el = document.createElement('div');
+      el.classList.add('widget');
+      el.setAttribute('data-widget-type', type || 'unknown');
+      if (node.id) el.setAttribute('data-widget-id', node.id);
+
+      switch (type) {
+        case 'button': {
+          const btn = document.createElement('button');
+          btn.textContent = node.title || '';
+          btn.setAttribute('data-variant', node.variant || 'primary');
+          if (node.disabled) btn.disabled = true;
+          if (node.loading) btn.setAttribute('data-loading', 'true');
+          if (node.hasOnClick && node.id) {
+            btn.addEventListener('click', () => sendEvent(node.id, 'onClick', {}));
+          }
+          el.appendChild(btn);
+          break;
+        }
+        case 'text_block': {
+          const variant = node.variant || 'block';
+          let tag = 'span';
+          if (variant === 'heading1') tag = 'h1';
+          else if (variant === 'heading2') tag = 'h2';
+          else if (variant === 'heading3') tag = 'h3';
+          else if (variant === 'heading4') tag = 'h4';
+          else if (variant === 'paragraph') tag = 'p';
+          else if (variant === 'code') tag = 'code';
+          else if (variant === 'label') tag = 'span';
+          const textEl = document.createElement(tag);
+          textEl.textContent = node.content || '';
+          if (variant === 'label') textEl.classList.add('field-label');
+          el.setAttribute('data-variant', variant);
+          el.appendChild(textEl);
+          break;
+        }
+        case 'text_input': {
+          if (node.label) {
+            const lbl = document.createElement('span');
+            lbl.classList.add('field-label');
+            lbl.textContent = node.label;
+            el.appendChild(lbl);
+          }
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = node.value || '';
+          input.placeholder = node.placeholder || '';
+          if (node.disabled) input.disabled = true;
+          if (node.readOnly) input.readOnly = true;
+          if (node.hasOnChange && node.id) {
+            input.addEventListener('input', (e) => {
+              sendEvent(node.id, 'onChange', { value: e.target.value });
+            });
+          }
+          el.appendChild(input);
+          break;
+        }
+        case 'number_input': {
+          if (node.label) {
+            const lbl = document.createElement('span');
+            lbl.classList.add('field-label');
+            lbl.textContent = node.label;
+            el.appendChild(lbl);
+          }
+          const input = document.createElement('input');
+          input.type = 'number';
+          if (node.value != null) input.value = String(node.value);
+          if (node.min != null) input.min = String(node.min);
+          if (node.max != null) input.max = String(node.max);
+          if (node.step != null) input.step = String(node.step);
+          if (node.disabled) input.disabled = true;
+          if (node.hasOnChange && node.id) {
+            input.addEventListener('input', (e) => {
+              sendEvent(node.id, 'onChange', { value: parseFloat(e.target.value) || 0 });
+            });
+          }
+          el.appendChild(input);
+          break;
+        }
+        case 'select': {
+          if (node.label) {
+            const lbl = document.createElement('span');
+            lbl.classList.add('field-label');
+            lbl.textContent = node.label;
+            el.appendChild(lbl);
+          }
+          const select = document.createElement('select');
+          if (node.placeholder) {
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = node.placeholder;
+            opt.disabled = true;
+            select.appendChild(opt);
+          }
+          (node.options || []).forEach(o => {
+            const opt = document.createElement('option');
+            opt.value = o.value;
+            opt.textContent = o.label;
+            if (o.value === node.value) opt.selected = true;
+            select.appendChild(opt);
+          });
+          if (node.disabled) select.disabled = true;
+          if (node.hasOnChange && node.id) {
+            select.addEventListener('change', (e) => {
+              sendEvent(node.id, 'onChange', { value: e.target.value });
+            });
+          }
+          el.appendChild(select);
+          break;
+        }
+        case 'checkbox': {
+          const label = document.createElement('label');
+          label.classList.add('checkbox-label');
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.checked = !!node.checked;
+          if (node.disabled) input.disabled = true;
+          if (node.hasOnChange && node.id) {
+            input.addEventListener('change', (e) => {
+              sendEvent(node.id, 'onChange', { value: e.target.checked });
+            });
+          }
+          label.appendChild(input);
+          if (node.label) {
+            const span = document.createElement('span');
+            span.textContent = node.label;
+            label.appendChild(span);
+          }
+          el.appendChild(label);
+          break;
+        }
+        case 'layout': {
+          el.setAttribute('data-direction', node.direction || 'vertical');
+          if (node.gap) el.style.gap = node.gap + 'px';
+          if (node.padding) el.style.padding = node.padding + 'px';
+          if (node.direction === 'grid' && node.columns) {
+            el.style.gridTemplateColumns = `repeat(${node.columns}, 1fr)`;
+          }
+          (node.children || []).forEach(child => {
+            el.appendChild(renderWidget(child));
+          });
+          break;
+        }
+        case 'card': {
+          el.classList.add('card');
+          if (node.padding) el.style.padding = node.padding + 'px';
+          if (node.title) {
+            const t = document.createElement('div');
+            t.classList.add('card-title');
+            t.textContent = node.title;
+            el.appendChild(t);
+          }
+          if (node.subtitle) {
+            const s = document.createElement('div');
+            s.classList.add('card-subtitle');
+            s.textContent = node.subtitle;
+            el.appendChild(s);
+          }
+          (node.children || []).forEach(child => {
+            el.appendChild(renderWidget(child));
+          });
+          if (node.footer) {
+            const f = document.createElement('div');
+            f.classList.add('card-footer');
+            node.footer.forEach(child => f.appendChild(renderWidget(child)));
+            el.appendChild(f);
+          }
+          break;
+        }
+        default: {
+          el.textContent = `[Unknown widget: ${type}]`;
+          // Still render children if present
+          (node.children || []).forEach(child => {
+            el.appendChild(renderWidget(child));
+          });
+          break;
+        }
+      }
+
+      return el;
+    }
+
+    // Simple patch application: on any update, request full re-render
+    // This is sufficient for E2E tests which just need to see updated state
+    function applyPatches(patches) {
+      // Patches change the JSON tree. For E2E simplicity, we track
+      // the current tree and apply patches to it, then re-render.
+      // But since we don't store the tree, we'll just wait for the
+      // next refresh. The server sends updates as patches but we can
+      // simply re-render by storing the last known tree.
+    }
+
+    // Enhanced: store last tree and apply patches
+    let currentTree = null;
+    const originalOnMessage = null;
+
+    // Override to track tree state
+    function connectEnhanced() {
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => { app.textContent = 'Connected, waiting for render...'; };
+      ws.onclose = () => { app.textContent = 'Disconnected'; };
+      ws.onerror = () => { app.textContent = 'Connection error'; };
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.method === 'refresh') {
+          currentTree = msg.widgets;
+          app.innerHTML = '';
+          app.appendChild(renderWidget(currentTree));
+        } else if (msg.method === 'update') {
+          if (currentTree && msg.patches) {
+            for (const patch of msg.patches) {
+              applyPatch(currentTree, patch);
+            }
+            app.innerHTML = '';
+            app.appendChild(renderWidget(currentTree));
+          }
+        }
+      };
+    }
+
+    function applyPatch(tree, patch) {
+      if (patch.op === 'replace') {
+        // Navigate the path and replace
+        const parts = patch.path.split('/').filter(Boolean);
+        let node = tree;
+        for (let i = 0; i < parts.length - 1; i++) {
+          const key = parts[i];
+          if (Array.isArray(node)) {
+            node = node[parseInt(key)];
+          } else if (node && typeof node === 'object') {
+            node = node[key];
+          }
+        }
+        if (node && parts.length > 0) {
+          const lastKey = parts[parts.length - 1];
+          if (Array.isArray(node)) {
+            node[parseInt(lastKey)] = patch.value;
+          } else {
+            node[lastKey] = patch.value;
+          }
+        }
+      }
+    }
+
+    connectEnhanced();
+  </script>
+</body>
+</html>
