@@ -2,6 +2,8 @@
 /rusty/target
 /rusty-macros/target
 /rusty-server/target
+/rusty-docs/target
+/rusty-docs/src/generated/
 
 # Frontend
 src/frontend/node_modules/
