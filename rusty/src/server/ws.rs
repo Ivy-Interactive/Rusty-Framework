@@ -159,6 +159,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     // Send initial render from this session's own runtime
     {
         let mut session = session_arc.write().await;
+        session.runtime.build().await;
         if let Some(tree) = session.runtime.current_tree().await {
             let msg = ServerMessage::Refresh {
                 widgets: tree.clone(),

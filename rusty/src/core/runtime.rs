@@ -235,6 +235,14 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_runtime_build_populates_tree() {
+        let mut runtime = Runtime::new(TestView);
+        assert!(runtime.current_tree().await.is_none());
+        runtime.build().await;
+        assert!(runtime.current_tree().await.is_some());
+    }
+
+    #[tokio::test]
     async fn test_runtime_build_assigns_ids_automatically() {
         use crate::widgets::layout::Layout;
 
