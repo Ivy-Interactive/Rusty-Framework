@@ -1,6 +1,36 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// Typed event names for compile-time safety.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EventName {
+    Click,
+    Change,
+}
+
+impl EventName {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            EventName::Click => "click",
+            EventName::Change => "change",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "click" => Some(EventName::Click),
+            "change" => Some(EventName::Change),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for EventName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Type alias for event handler callbacks.
 /// Receives the event arguments as a serde_json::Value.
 pub type EventCallback = Arc<dyn Fn(serde_json::Value) + Send + Sync>;
@@ -39,6 +69,27 @@ impl EventRegistry {
     /// Merge another registry's handlers into this one.
     pub fn merge(&mut self, other: EventRegistry) {
         self.handlers.extend(other.handlers);
+    }
+
+    /// Register a callback using a typed event name.
+    pub fn register_typed(
+        &mut self,
+        widget_id: &str,
+        event: EventName,
+        callback: EventCallback,
+    ) {
+        self.register(widget_id, event.as_str(), callback);
+    }
+
+    /// Dispatch an event using a typed event name.
+    /// Returns true if a handler was found and invoked, false otherwise.
+    pub fn dispatch_typed(
+        &self,
+        widget_id: &str,
+        event: EventName,
+        args: serde_json::Value,
+    ) -> bool {
+        self.dispatch(widget_id, event.as_str(), args)
     }
 
     /// Remove all registered handlers.
