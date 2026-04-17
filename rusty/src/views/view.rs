@@ -60,6 +60,12 @@ pub trait WidgetData: Send + Sync + Debug + 'static {
     fn single_child_mut(&mut self) -> Option<&mut Element> {
         None
     }
+
+    /// Return mutable references to footer elements for recursive tree walking.
+    /// Card and Dialog override this.
+    fn footer_mut(&mut self) -> Option<&mut Vec<Element>> {
+        None
+    }
 }
 
 impl Clone for Box<dyn WidgetData> {
@@ -102,6 +108,11 @@ impl Element {
                 }
                 if let Some(child) = widget.single_child_mut() {
                     child.assign_ids(ctx);
+                }
+                if let Some(footer) = widget.footer_mut() {
+                    for child in footer {
+                        child.assign_ids(ctx);
+                    }
                 }
             }
             Element::Fragment(children) => {
@@ -571,5 +582,51 @@ mod tests {
             clicked.load(std::sync::atomic::Ordering::SeqCst),
             "on_click handler should have fired"
         );
+    }
+
+    #[test]
+    fn test_assign_ids_recurses_into_card_footer() {
+        let mut store = HookStore::default();
+        let mut ctx = BuildContext::new(&mut store, None);
+
+        let mut element: Element = Card::new()
+            .footer(vec![Button::new("Footer action").into()])
+            .into();
+
+        element.assign_ids(&mut ctx);
+
+        if let Element::Widget(card) = &element {
+            assert_eq!(card.get_id(), Some("w-0"));
+            if let Some(footer) = card.to_json().get("footer") {
+                let footer_arr = footer.as_array().unwrap();
+                let btn_id = footer_arr[0]["id"].as_str().unwrap();
+                assert_eq!(btn_id, "w-1");
+            } else {
+                panic!("Expected Card to have a footer");
+            }
+        }
+    }
+
+    #[test]
+    fn test_assign_ids_recurses_into_dialog_footer() {
+        let mut store = HookStore::default();
+        let mut ctx = BuildContext::new(&mut store, None);
+
+        let mut element: Element = Dialog::new(true)
+            .footer(vec![Button::new("OK").into()])
+            .into();
+
+        element.assign_ids(&mut ctx);
+
+        if let Element::Widget(dialog) = &element {
+            assert_eq!(dialog.get_id(), Some("w-0"));
+            if let Some(footer) = dialog.to_json().get("footer") {
+                let footer_arr = footer.as_array().unwrap();
+                let btn_id = footer_arr[0]["id"].as_str().unwrap();
+                assert_eq!(btn_id, "w-1");
+            } else {
+                panic!("Expected Dialog to have a footer");
+            }
+        }
     }
 }

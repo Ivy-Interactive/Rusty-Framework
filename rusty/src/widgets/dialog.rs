@@ -88,6 +88,10 @@ impl WidgetData for Dialog {
     fn children_mut(&mut self) -> Option<&mut Vec<Element>> {
         Some(&mut self.children)
     }
+
+    fn footer_mut(&mut self) -> Option<&mut Vec<Element>> {
+        self.footer.as_mut()
+    }
 }
 
 impl From<Dialog> for Element {
