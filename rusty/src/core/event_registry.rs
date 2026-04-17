@@ -16,6 +16,7 @@ impl EventName {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "click" => Some(EventName::Click),
@@ -72,12 +73,7 @@ impl EventRegistry {
     }
 
     /// Register a callback using a typed event name.
-    pub fn register_typed(
-        &mut self,
-        widget_id: &str,
-        event: EventName,
-        callback: EventCallback,
-    ) {
+    pub fn register_typed(&mut self, widget_id: &str, event: EventName, callback: EventCallback) {
         self.register(widget_id, event.as_str(), callback);
     }
 

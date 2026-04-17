@@ -266,12 +266,31 @@
     let currentTree = null;
     const originalOnMessage = null;
 
+    // Reconnect state
+    let reconnectAttempts = 0;
+    const RETRY_DELAYS = [0, 2000, 10000];
+    const MAX_RECONNECT_ATTEMPTS = 10;
+
+    function scheduleReconnect() {
+      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        app.textContent = 'Connection failed after ' + MAX_RECONNECT_ATTEMPTS + ' attempts';
+        return;
+      }
+      const delay = RETRY_DELAYS[Math.min(reconnectAttempts, RETRY_DELAYS.length - 1)];
+      reconnectAttempts++;
+      app.textContent = 'Disconnected. Reconnecting in ' + delay + 'ms... (attempt ' + reconnectAttempts + ')';
+      setTimeout(() => connectEnhanced(), delay);
+    }
+
     // Override to track tree state
     function connectEnhanced() {
       ws = new WebSocket(wsUrl);
-      ws.onopen = () => { app.textContent = 'Connected, waiting for render...'; };
-      ws.onclose = () => { app.textContent = 'Disconnected'; };
-      ws.onerror = () => { app.textContent = 'Connection error'; };
+      ws.onopen = () => {
+        reconnectAttempts = 0;
+        app.textContent = 'Connected, waiting for render...';
+      };
+      ws.onclose = () => { scheduleReconnect(); };
+      ws.onerror = () => {};
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
         if (msg.method === 'refresh') {
