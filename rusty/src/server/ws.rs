@@ -197,8 +197,22 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             }
                         }
                     }
-                    ClientMessage::Navigate { .. } => {
-                        // Navigation handling (future)
+                    ClientMessage::Navigate { app_id, state } => {
+                        let _ = event_tx
+                            .send(RuntimeMessage::Navigate { app_id, state })
+                            .await;
+
+                        // After navigate, get updated tree from this session's runtime
+                        if let Some(tree) = session.runtime.current_tree().await {
+                            if let Some(patches) = session.reconciler.reconcile(&tree) {
+                                if !patches.is_empty() {
+                                    let msg = ServerMessage::Update { patches };
+                                    if let Ok(json) = serde_json::to_string(&msg) {
+                                        let _ = sender.send(Message::Text(json.into())).await;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
