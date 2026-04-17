@@ -15,13 +15,16 @@ impl EventName {
             EventName::Change => "change",
         }
     }
+}
 
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for EventName {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "click" => Some(EventName::Click),
-            "change" => Some(EventName::Change),
-            _ => None,
+            "click" => Ok(EventName::Click),
+            "change" => Ok(EventName::Change),
+            _ => Err(format!("unknown event name: '{}'", s)),
         }
     }
 }
@@ -129,6 +132,17 @@ mod tests {
         let registry = EventRegistry::new();
         let result = registry.dispatch("nonexistent", "click", serde_json::Value::Null);
         assert!(!result);
+    }
+
+    #[test]
+    fn test_from_str_valid() {
+        assert_eq!("click".parse::<EventName>(), Ok(EventName::Click));
+        assert_eq!("change".parse::<EventName>(), Ok(EventName::Change));
+    }
+
+    #[test]
+    fn test_from_str_invalid() {
+        assert!("unknown".parse::<EventName>().is_err());
     }
 
     #[test]
