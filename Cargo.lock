@@ -777,6 +777,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rusty-docs"
+version = "0.1.0"
+dependencies = [
+ "rusty",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rusty-macros"
 version = "0.1.0"
 dependencies = [
