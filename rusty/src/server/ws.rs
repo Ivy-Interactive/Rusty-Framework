@@ -57,7 +57,7 @@ pub struct AppState {
 /// The Rusty WebSocket server for frontend communication.
 pub struct RustyServer {
     port: u16,
-    root_view: Box<dyn Fn() -> Box<dyn View> + Send + Sync>,
+    root_view: Box<dyn Fn() -> Box<dyn View + Send + Sync> + Send + Sync>,
     static_dir: Option<PathBuf>,
 }
 
@@ -82,7 +82,8 @@ impl RustyServer {
 
     /// Build the axum router with WebSocket support.
     pub fn router(self) -> Router {
-        let root_factory: Arc<dyn Fn() -> Box<dyn View> + Send + Sync> = Arc::from(self.root_view);
+        let root_factory: Arc<dyn Fn() -> Box<dyn View + Send + Sync> + Send + Sync> =
+            Arc::from(self.root_view);
         let session_store = AppSessionStore::new(root_factory);
         let state = Arc::new(AppState { session_store });
 

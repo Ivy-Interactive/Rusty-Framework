@@ -18,11 +18,11 @@ pub struct AppSession {
 /// Tracks active connections and creates isolated sessions on demand.
 pub struct AppSessionStore {
     sessions: RwLock<HashMap<String, ()>>,
-    root_factory: Arc<dyn Fn() -> Box<dyn View> + Send + Sync>,
+    root_factory: Arc<dyn Fn() -> Box<dyn View + Send + Sync> + Send + Sync>,
 }
 
 impl AppSessionStore {
-    pub fn new(root_factory: Arc<dyn Fn() -> Box<dyn View> + Send + Sync>) -> Self {
+    pub fn new(root_factory: Arc<dyn Fn() -> Box<dyn View + Send + Sync> + Send + Sync>) -> Self {
         AppSessionStore {
             sessions: RwLock::new(HashMap::new()),
             root_factory,
