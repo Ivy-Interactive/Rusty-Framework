@@ -134,8 +134,83 @@ vp lint --fix .
 
 ### Configuration Files
 
-- `vite.config.ts` - Contains Vite+ syntax formatting and linting preferences
+- `vite.config.mjs` - Contains Vite+ syntax formatting and linting preferences
 - `package.json` - Contains execution scripts
+
+## Module Graph and Lazy Loading
+
+Most widgets in `src/widgets/widgetMap.ts` are code-split with `lazyWithRetry(() => import("..."))`.
+Whether that actually splits anything is decided by the module graph, not by the `import()` call, and
+it is easy to defeat by accident. This section is the rule, the two ways it breaks, and the check.
+
+### The rule
+
+A widget loaded with `lazyWithRetry(() => import("..."))` gets its own lazily-loaded chunk **only if
+no eagerly-reachable module statically imports a runtime value from it**. One such import anywhere in
+the tree is enough: the static edge wins, the module is pulled into the eager graph, and the dynamic
+`import()` becomes a no-op that resolves something already loaded.
+
+Since `widgetMap.ts` is itself eager and imports around two dozen widgets eagerly, it is the module
+where this goes wrong.
+
+### Two ways the edge gets created
+
+**1. Through a sibling barrel.** `widgetMap.ts` imports an eager widget from a barrel
+(`@/widgets/lists`), and that barrel also re-exports the lazy widget. Importing _anything_ from the
+barrel drags in everything it re-exports. Fix by importing the concrete module instead:
+
+```ts
+import { ListItemWidget } from "@/widgets/lists/ListItemWidget"; // not "@/widgets/lists"
+```
+
+**2. From the same file.** The eager exports live in the _same file_ as the lazy widget. Bypassing the
+barrel cannot help here - any import of the eager widget resolves to the module that also holds the
+lazy one. Fix by splitting the eager exports into their own files, as `chat/` does with
+`ChatMessageWidget.tsx`, `ChatLoadingWidget.tsx` and `ChatStatusWidget.tsx`. Once split, keep the
+lazy widget out of the barrel: `chat/index.ts` deliberately does not re-export `ChatWidget`.
+
+Type-only references are free, in either direction. A `type` does not exist at runtime, so it creates
+no edge, which is why `ChatWidget.tsx` may safely import `ChatMessageWidgetProps` from the file it was
+split out of. Write it as `import type { ... }`: a plain `import` of a type-only binding is erased too
+and does not change the bundle, but the `type` keyword states the intent and is required if
+`verbatimModuleSyntax` is ever enabled - under that flag the plain form is a hard `TS1484` error.
+
+Note the direction that matters. It is the **eager module importing a value from the lazy one** that
+defeats the split. The reverse is fine: a lazy widget may import real values from eager modules, and
+in fact does - `ChatWidget.tsx` imports `Button` and `ChatInput` that way.
+
+### How to check
+
+**Do not rely on the build log.** Rolldown has an `INEFFECTIVE_DYNAMIC_IMPORT` warning for this, and
+older toolchains printed it, but on the pinned `vite-plus` (0.2.7) a deliberately broken tree builds
+with **exit 0 and no warning at all** - not on stdout, and not via an `onwarn` handler. Chunk size is
+not a signal either: the defeated chunk is still emitted at close to its normal size (13,952 bytes vs
+13,925 correct), so the historical "69-byte facade" symptom no longer appears.
+
+What does work is asking whether the entry statically imports the widget's chunk. After `pnpm run
+build`:
+
+```bash
+cd src/frontend
+for w in ChatWidget ListWidget; do
+  c=$(ls dist/assets | grep -E "^${w}-[^-]*\.js$" | head -1)
+  grep -qF -e "import\"./$c" -e "from\"./$c" dist/assets/*.js &&
+    echo "EAGER (lazy loading defeated): $w [$c]"
+done
+```
+
+Silence means the widget is genuinely lazy. The distinction is that a lazy edge is emitted as
+``import(`./ChatWidget-<hash>.js`)`` with backticks, whereas an eager one appears as a
+double-quoted `import"./ChatWidget-<hash>.js"` or `from"./ChatWidget-<hash>.js"`. Widen the `for`
+list to check other widgets; names that share a chunk with another widget have no chunk of their own
+and will simply not match.
+
+### Barrels with no importers are inert
+
+`widgetMap.ts` is the only consumer of a top-level widget barrel in the tree, apart from
+`@/widgets/rowAction` (used by `tree/TreeItem.tsx` and `dataTables/`). Six of the 27 top-level barrels
+have no importer at all, so they cannot defeat anything no matter what they re-export. There is no
+need to pre-emptively narrow them.
 
 ## Testing
 
