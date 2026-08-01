@@ -1,3 +1,4 @@
+pub mod apps;
 pub mod diff;
 pub mod event_registry;
 pub mod query_cache;
@@ -7,6 +8,7 @@ pub mod services;
 pub mod signals;
 pub mod view_tree;
 
+pub use apps::{AppDescriptor, AppFactory, AppIds, AppRegistry};
 pub use event_registry::EventRegistry;
 pub use query_cache::{
     QueryEntryState, QueryError, QueryOptions, QueryScope, QueryService, QueryServiceOptions,

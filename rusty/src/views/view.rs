@@ -154,8 +154,8 @@ pub struct BuildContext<'a> {
     /// Cloned snapshots of ancestor context maps for safe context lookup.
     /// Each entry is a (ViewId, context map) pair, cheaply cloned via Arc.
     pub(crate) ancestor_contexts: Vec<(ViewId, ContextSnapshot)>,
-    /// Shared services resolvable by `use_service`. Empty unless the runtime was
-    /// built with `Runtime::with_services`.
+    /// Server-level services available to every view via `use_service`.
+    /// Cloning the `Arc` when descending into a child view is a refcount bump.
     pub(crate) services: Arc<ServiceRegistry>,
 }
 
@@ -191,6 +191,16 @@ impl<'a> BuildContext<'a> {
         rebuild_tx: Option<tokio::sync::mpsc::Sender<ViewId>>,
         view_id: ViewId,
     ) -> Self {
+        BuildContext::with_services(store, rebuild_tx, view_id, Arc::new(ServiceRegistry::new()))
+    }
+
+    /// Create a context with an explicit service registry.
+    pub fn with_services(
+        store: &'a mut HookStore,
+        rebuild_tx: Option<tokio::sync::mpsc::Sender<ViewId>>,
+        view_id: ViewId,
+        services: Arc<ServiceRegistry>,
+    ) -> Self {
         BuildContext {
             hook_index: 0,
             store,
@@ -201,17 +211,11 @@ impl<'a> BuildContext<'a> {
             widget_id_counter: 0,
             child_views: Vec::new(),
             ancestor_contexts: Vec::new(),
-            services: Arc::new(ServiceRegistry::new()),
+            services,
         }
     }
 
-    /// Attach a service registry so `use_service` can resolve from this context.
-    pub fn with_services(mut self, services: Arc<ServiceRegistry>) -> Self {
-        self.services = services;
-        self
-    }
-
-    /// The service registry backing `use_service`.
+    /// The server-level service registry backing this build.
     pub fn services(&self) -> &Arc<ServiceRegistry> {
         &self.services
     }
@@ -321,9 +325,12 @@ impl<'a> BuildContext<'a> {
 
         let mut owned_store = child_store.map(std::mem::take).unwrap_or_default();
 
-        let mut child_ctx =
-            BuildContext::with_view_id(&mut owned_store, self.rebuild_tx.clone(), child_view_id)
-                .with_services(self.services.clone());
+        let mut child_ctx = BuildContext::with_services(
+            &mut owned_store,
+            self.rebuild_tx.clone(),
+            child_view_id,
+            self.services.clone(),
+        );
         child_ctx.reset();
         // Set ancestor contexts: current view's store + all ancestors above.
         // Clone via Arc::clone per entry (cheap reference count bump).

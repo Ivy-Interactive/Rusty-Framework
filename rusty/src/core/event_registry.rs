@@ -6,6 +6,16 @@ use std::sync::Arc;
 pub enum EventName {
     Click,
     Change,
+    CellClick,
+    RowAction,
+    Submit,
+    LineClick,
+    DayClick,
+    Input,
+    Resize,
+    LinkClick,
+    Focus,
+    Blur,
 }
 
 impl EventName {
@@ -13,6 +23,16 @@ impl EventName {
         match self {
             EventName::Click => "click",
             EventName::Change => "change",
+            EventName::CellClick => "cellclick",
+            EventName::RowAction => "rowaction",
+            EventName::Submit => "submit",
+            EventName::LineClick => "lineclick",
+            EventName::DayClick => "dayclick",
+            EventName::Input => "input",
+            EventName::Resize => "resize",
+            EventName::LinkClick => "linkclick",
+            EventName::Focus => "focus",
+            EventName::Blur => "blur",
         }
     }
 
@@ -21,6 +41,16 @@ impl EventName {
         match s {
             "click" => Some(EventName::Click),
             "change" => Some(EventName::Change),
+            "cellclick" => Some(EventName::CellClick),
+            "rowaction" => Some(EventName::RowAction),
+            "submit" => Some(EventName::Submit),
+            "lineclick" => Some(EventName::LineClick),
+            "dayclick" => Some(EventName::DayClick),
+            "input" => Some(EventName::Input),
+            "resize" => Some(EventName::Resize),
+            "linkclick" => Some(EventName::LinkClick),
+            "focus" => Some(EventName::Focus),
+            "blur" => Some(EventName::Blur),
             _ => None,
         }
     }
@@ -129,6 +159,33 @@ mod tests {
         let registry = EventRegistry::new();
         let result = registry.dispatch("nonexistent", "click", serde_json::Value::Null);
         assert!(!result);
+    }
+
+    #[test]
+    fn test_event_name_round_trip() {
+        let all = [
+            EventName::Click,
+            EventName::Change,
+            EventName::CellClick,
+            EventName::RowAction,
+            EventName::Submit,
+            EventName::LineClick,
+            EventName::DayClick,
+            EventName::Input,
+            EventName::Resize,
+            EventName::LinkClick,
+            EventName::Focus,
+            EventName::Blur,
+        ];
+
+        for event in all {
+            assert_eq!(EventName::from_str(event.as_str()), Some(event));
+            // Event names travel over the wire lowercase.
+            assert_eq!(event.as_str(), event.as_str().to_lowercase());
+        }
+
+        assert_eq!(EventName::from_str("onClick"), None);
+        assert_eq!(EventName::from_str("unknown"), None);
     }
 
     #[test]

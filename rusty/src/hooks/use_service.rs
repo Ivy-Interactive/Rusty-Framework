@@ -19,6 +19,13 @@ pub fn use_service<T: Send + Sync + 'static>(ctx: &BuildContext) -> Arc<T> {
     })
 }
 
+/// Resolve a server-level service of type `T`, or `None` when it was not registered.
+///
+/// The non-panicking counterpart to [`use_service`], for optional dependencies.
+pub fn try_use_service<T: Send + Sync + 'static>(ctx: &BuildContext) -> Option<Arc<T>> {
+    ctx.services().get::<T>()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -53,6 +60,13 @@ mod tests {
         let mut store = HookStore::new();
         let ctx = BuildContext::new(&mut store, None);
         let _ = use_service::<Unregistered>(&ctx);
+    }
+
+    #[test]
+    fn test_try_use_service_returns_none_when_unregistered() {
+        let mut store = HookStore::new();
+        let ctx = BuildContext::new(&mut store, None);
+        assert!(try_use_service::<Greeter>(&ctx).is_none());
     }
 
     #[test]

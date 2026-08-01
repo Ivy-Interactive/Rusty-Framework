@@ -239,6 +239,179 @@
           }
           break;
         }
+        case 'data_table': {
+          const table = document.createElement('table');
+          const visible = (node.columns || []).filter(c => !c.hidden);
+
+          const thead = document.createElement('thead');
+          const headRow = document.createElement('tr');
+          visible.forEach(c => {
+            const th = document.createElement('th');
+            th.textContent = c.header || '';
+            th.setAttribute('data-column-name', c.name || '');
+            th.setAttribute('data-column-type', c.type || 'text');
+            if (c.sortDirection && c.sortDirection !== 'none') {
+              th.setAttribute('data-sort-direction', c.sortDirection);
+            }
+            headRow.appendChild(th);
+          });
+          thead.appendChild(headRow);
+          table.appendChild(thead);
+
+          const tbody = document.createElement('tbody');
+          (node.rows || []).forEach((row, rowIndex) => {
+            const tr = document.createElement('tr');
+            visible.forEach((c, columnIndex) => {
+              const td = document.createElement('td');
+              const value = row ? row[c.name] : undefined;
+              td.textContent = value == null ? '' : String(value);
+              if (node.hasOnCellClick && node.id) {
+                td.addEventListener('click', () => {
+                  sendEvent(node.id, 'cellclick', {
+                    rowIndex,
+                    columnIndex,
+                    columnName: c.name,
+                    cellValue: value == null ? null : value
+                  });
+                });
+              }
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+          table.appendChild(tbody);
+
+          if (node.config) {
+            el.setAttribute('data-selection-mode', node.config.selectionMode || 'cells');
+            if (node.config.showSearch) el.setAttribute('data-show-search', 'true');
+          }
+          el.appendChild(table);
+          break;
+        }
+        case 'form': {
+          if (node.disabled) el.setAttribute('data-disabled', 'true');
+          (node.children || []).forEach(child => {
+            el.appendChild(renderWidget(child));
+          });
+          const submit = document.createElement('button');
+          submit.textContent = node.submitTitle || 'Submit';
+          submit.setAttribute('data-form-submit', 'true');
+          if (node.disabled) submit.disabled = true;
+          if (node.hasOnSubmit && node.id) {
+            submit.addEventListener('click', () => sendEvent(node.id, 'submit', {}));
+          }
+          el.appendChild(submit);
+          break;
+        }
+        case 'field': {
+          if (node.label) {
+            const lbl = document.createElement('span');
+            lbl.classList.add('field-label');
+            lbl.textContent = node.label;
+            el.appendChild(lbl);
+          }
+          if (node.required) el.setAttribute('data-required', 'true');
+          if (node.description) {
+            const d = document.createElement('div');
+            d.setAttribute('data-field-description', 'true');
+            d.textContent = node.description;
+            el.appendChild(d);
+          }
+          if (node.child) el.appendChild(renderWidget(node.child));
+          if (node.help) {
+            const h = document.createElement('div');
+            h.setAttribute('data-field-help', 'true');
+            h.textContent = node.help;
+            el.appendChild(h);
+          }
+          if (node.invalid) {
+            const v = document.createElement('div');
+            v.setAttribute('data-field-invalid', 'true');
+            v.textContent = node.invalid;
+            el.appendChild(v);
+          }
+          break;
+        }
+        case 'diff_view': {
+          el.setAttribute('data-view-type', node.viewType || 'unified');
+          if (node.language) el.setAttribute('data-language', node.language);
+          if (node.oldRevision) el.setAttribute('data-old-revision', node.oldRevision);
+          if (node.newRevision) el.setAttribute('data-new-revision', node.newRevision);
+          if (node.wordWrap) el.setAttribute('data-word-wrap', 'true');
+          if (node.collapsible) el.setAttribute('data-collapsible', 'true');
+          if (node.defaultCollapsed) el.setAttribute('data-default-collapsed', 'true');
+          const pre = document.createElement('pre');
+          pre.textContent = node.diff || '';
+          el.appendChild(pre);
+          break;
+        }
+        case 'qr_code': {
+          el.setAttribute('data-value', node.value || '');
+          el.setAttribute('data-error-correction-level', node.errorCorrectionLevel || 'low');
+          if (node.pixelSize != null) el.setAttribute('data-pixel-size', String(node.pixelSize));
+          break;
+        }
+        case 'activity_heatmap': {
+          el.setAttribute('data-interval', node.interval || 'daily');
+          el.setAttribute('data-day-count', String((node.data || []).length));
+          if (node.valueLabel) el.setAttribute('data-value-label', node.valueLabel);
+          if (node.startDate) el.setAttribute('data-start-date', node.startDate);
+          if (node.endDate) el.setAttribute('data-end-date', node.endDate);
+          (node.data || []).forEach(day => {
+            const cell = document.createElement('span');
+            cell.setAttribute('data-day', day.date || '');
+            cell.setAttribute('data-count', String(day.count == null ? 0 : day.count));
+            if (day.hour != null) cell.setAttribute('data-hour', String(day.hour));
+            if (node.hasOnDayClick && node.id) {
+              cell.addEventListener('click', () => sendEvent(node.id, 'dayclick', day));
+            }
+            el.appendChild(cell);
+          });
+          break;
+        }
+        case 'terminal': {
+          if (node.cols != null) el.setAttribute('data-cols', String(node.cols));
+          if (node.rows != null) el.setAttribute('data-rows', String(node.rows));
+          el.setAttribute('data-cursor-style', node.cursorStyle || 'block');
+          el.setAttribute('data-scrollback', String(node.scrollback == null ? 1000 : node.scrollback));
+          if (node.closed) el.setAttribute('data-closed', 'true');
+          if (node.loading) el.setAttribute('data-loading', 'true');
+          const pre = document.createElement('pre');
+          pre.textContent = node.initialContent || '';
+          el.appendChild(pre);
+          break;
+        }
+        case 'rich_text_input': {
+          if (node.showToolbar) {
+            const toolbar = document.createElement('div');
+            toolbar.setAttribute('data-toolbar', 'true');
+            el.appendChild(toolbar);
+          }
+          const editor = document.createElement('div');
+          editor.setAttribute('data-editor', 'true');
+          editor.setAttribute('contenteditable', node.editable && !node.disabled ? 'true' : 'false');
+          editor.innerHTML = node.value || '';
+          if (node.placeholder) editor.setAttribute('data-placeholder', node.placeholder);
+          if (node.hasOnChange && node.id) {
+            editor.addEventListener('input', () => {
+              sendEvent(node.id, 'change', { value: editor.innerHTML });
+            });
+          }
+          if (node.hasOnFocus && node.id) {
+            editor.addEventListener('focus', () => sendEvent(node.id, 'focus', {}));
+          }
+          if (node.hasOnBlur && node.id) {
+            editor.addEventListener('blur', () => sendEvent(node.id, 'blur', {}));
+          }
+          el.appendChild(editor);
+          if (node.invalid) {
+            const v = document.createElement('div');
+            v.setAttribute('data-invalid', 'true');
+            v.textContent = node.invalid;
+            el.appendChild(v);
+          }
+          break;
+        }
         default: {
           el.textContent = `[Unknown widget: ${type}]`;
           // Still render children if present
