@@ -87,22 +87,54 @@ const injectMeta = (mode) => {
 
 const mode = process.env.NODE_ENV || "development";
 
-const ineffectiveDynamicImports = [];
+/**
+ * Fails the build when a dynamically imported first-party module lands in a chunk that is also
+ * statically imported - the code-split is defeated and the module ships in the eager graph.
+ *
+ * This replaces a plugin that promoted Rolldown's INEFFECTIVE_DYNAMIC_IMPORT warning: that warning
+ * is never emitted on vite-plus 0.2.7, so the gate was silent while both known bug shapes built
+ * with exit 0. Reading the module graph works on the pinned version.
+ *
+ * node_modules targets are excluded on purpose: five vendor chunks (incl. the deliberate
+ * `vendor-markdown` manualChunks target) are legitimately both statically and dynamically
+ * imported, so including them would fail a correct build.
+ */
+const assertLazyChunks = {
+  name: "assert-lazy-chunks",
+  generateBundle(_options, bundle) {
+    const dynamicTargets = new Set();
+    for (const id of this.getModuleIds()) {
+      const info = this.getModuleInfo(id);
+      for (const target of info?.dynamicallyImportedIds ?? []) {
+        if (!target.includes("node_modules")) dynamicTargets.add(target);
+      }
+    }
 
-const failOnIneffectiveDynamicImport = {
-  name: "fail-on-ineffective-dynamic-import",
-  buildStart() {
-    ineffectiveDynamicImports.length = 0;
-  },
-  closeBundle() {
-    if (ineffectiveDynamicImports.length === 0) return;
-    this.error(
-      `${ineffectiveDynamicImports.length} ineffective dynamic import(s) — a lazy module is also ` +
-        `statically imported, so it will NOT get its own chunk:\n` +
-        ineffectiveDynamicImports.map((m) => `  - ${m}`).join("\n") +
-        `\n\nFix: if the eager exports live in a SIBLING file, import that file directly instead ` +
-        `of the barrel. If they live in the SAME file as the lazy export, split the file.`,
-    );
+    const chunkOfModule = new Map();
+    const staticallyImported = new Set();
+    for (const [name, chunk] of Object.entries(bundle)) {
+      if (chunk.type !== "chunk") continue;
+      for (const moduleId of chunk.moduleIds ?? []) chunkOfModule.set(moduleId, name);
+      for (const imported of chunk.imports) staticallyImported.add(imported);
+    }
+
+    const violations = [];
+    for (const target of dynamicTargets) {
+      const chunk = chunkOfModule.get(target);
+      if (chunk && staticallyImported.has(chunk)) {
+        violations.push(`  - ${path.relative(__dirname, target).replace(/\\/g, "/")} -> ${chunk}`);
+      }
+    }
+
+    if (violations.length > 0) {
+      this.error(
+        `${violations.length} lazily imported module(s) are also statically imported, so they ` +
+          `will NOT be code-split:\n${violations.join("\n")}\n\n` +
+          `Fix: if the eager exports live in a SIBLING file, import that file directly instead of ` +
+          `the barrel. If they live in the SAME file as the lazy export, split the file. ` +
+          `See "Module Graph and Lazy Loading" in README.md.`,
+      );
+    }
   },
 };
 
@@ -206,7 +238,7 @@ function manualChunks(id) {
 
 export default defineConfig({
   base: "./",
-  plugins: [react(), tailwindcss(), mkcert(), injectMeta(mode), failOnIneffectiveDynamicImport],
+  plugins: [react(), tailwindcss(), mkcert(), injectMeta(mode), assertLazyChunks],
   server: {
     proxy: {
       "^/(.*\\.md|llms\\.txt)$": {
@@ -233,13 +265,6 @@ export default defineConfig({
         chunkFileNames: "assets/[name]-[hash].js",
         assetFileNames: "assets/[name]-[hash].[ext]",
         manualChunks,
-      },
-      onwarn(warning, defaultHandler) {
-        if (warning.code === "INEFFECTIVE_DYNAMIC_IMPORT") {
-          ineffectiveDynamicImports.push(warning.message);
-          return;
-        }
-        defaultHandler(warning);
       },
     },
   },
