@@ -29,12 +29,9 @@ interface MockModuleInfo {
  * Simulates the gate's violation detection logic.
  * Returns an array of violation messages (empty if no violations).
  */
-function detectViolations(
-  moduleInfos: Map<string, MockModuleInfo>,
-  bundle: MockBundle,
-): string[] {
+function detectViolations(moduleInfos: Map<string, MockModuleInfo>, bundle: MockBundle): string[] {
   const dynamicTargets = new Set<string>();
-  for (const [id, info] of moduleInfos.entries()) {
+  for (const [_id, info] of moduleInfos.entries()) {
     for (const target of info?.dynamicallyImportedIds ?? []) {
       if (!target.includes("node_modules")) dynamicTargets.add(target);
     }
@@ -132,10 +129,7 @@ describe("assertLazyChunks gate logic", () => {
 
   it("excludes node_modules from violation detection", () => {
     const moduleInfos = new Map<string, MockModuleInfo>([
-      [
-        "src/entry.ts",
-        { dynamicallyImportedIds: ["node_modules/vendor/lib.js"] },
-      ],
+      ["src/entry.ts", { dynamicallyImportedIds: ["node_modules/vendor/lib.js"] }],
     ]);
 
     const bundle: MockBundle = {
