@@ -11,12 +11,17 @@
     "format": "vp fmt .",
     "format:check": "vp fmt --check .",
     "check:toolchain": "node scripts/check-toolchain-lockstep.mjs",
+    "check:installed": "node scripts/check-installed-tree.mjs",
     "doctor": "node scripts/check-installed-versions.mjs && node scripts/check-toolchain-lockstep.mjs",
+    "prebuild": "pnpm run check:installed",
+    "prelint": "pnpm run check:installed",
+    "pretest": "pnpm run check:installed",
     "preview": "vp preview",
     "test": "vp test",
     "e2e": "playwright test",
     "e2e:docs": "playwright test e2e/docs",
     "e2e:samples": "playwright test e2e/samples",
+    "//prepare": "husky's installer runs `git config core.hooksPath src/frontend/.husky/_` unconditionally, with no check of the existing value: any pnpm install here resets it. core.hooksPath is not configurable in this repo — .husky/pre-commit always wins. See README.md 'Pre-commit Hooks'.",
     "prepare": "cd ../.. && node src/frontend/node_modules/husky/bin.js src/frontend/.husky"
   },
   "dependencies": {

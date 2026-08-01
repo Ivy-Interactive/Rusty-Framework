@@ -1,4 +1,3 @@
-export { DateTimeInputWidget } from "./DateTimeInputWidget";
 export type {
   DateTimeInputWidgetProps,
   VariantType,
