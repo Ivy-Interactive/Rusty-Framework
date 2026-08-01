@@ -78,7 +78,7 @@ cargo build --workspace
 cargo test --workspace
 
 # Lint
-cargo clippy --workspace -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 
 # Format
 cargo fmt --all
