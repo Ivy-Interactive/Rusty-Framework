@@ -16,6 +16,10 @@ pub fn create_context<T: Send + Sync + Clone + 'static>(ctx: &mut BuildContext, 
 ///
 /// Walks the ancestor chain from the current view upward, checking each view's
 /// HookStore for a matching context value. Panics if no context of type `T` is found.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "this *is* a hook implementation; `clippy.toml` forbids the slot machinery to view code"
+)]
 pub fn use_context<T: Send + Sync + Clone + 'static>(ctx: &mut BuildContext) -> T {
     let _idx = ctx.next_hook_index();
     let type_id = TypeId::of::<T>();

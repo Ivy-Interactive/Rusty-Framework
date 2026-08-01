@@ -6,6 +6,10 @@ use crate::views::view::BuildContext;
 ///
 /// The callback can optionally return a cleanup function that will be called
 /// before the effect re-runs or when the view unmounts.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "this *is* a hook implementation; `clippy.toml` forbids the slot machinery to view code"
+)]
 pub fn use_effect<F>(ctx: &mut BuildContext, callback: F)
 where
     F: FnOnce() -> Option<Box<dyn FnOnce() + Send + Sync>> + Send + 'static,
@@ -39,6 +43,10 @@ where
 ///
 /// Analogous to Ivy-Framework's trigger-based effect system — the effect runs
 /// on first build and again whenever any dependency value changes.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "this *is* a hook implementation; `clippy.toml` forbids the slot machinery to view code"
+)]
 pub fn use_effect_with_deps<F>(ctx: &mut BuildContext, deps: &[&dyn DynEq], callback: F)
 where
     F: FnOnce(&[&dyn DynEq]) -> Option<Box<dyn FnOnce() + Send + Sync>> + Send + 'static,
