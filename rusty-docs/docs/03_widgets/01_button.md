@@ -13,7 +13,7 @@ Button::new("Click me")
 | Property | Method | Type | Description |
 |----------|--------|------|-------------|
 | Title | `new(title)` | `&str` | Button label text |
-| Variant | `.variant(v)` | `ButtonVariant` | `Default`, `Primary`, `Ghost` |
+| Variant | `.variant(v)` | `ButtonVariant` | `Primary` (default), `Secondary`, `Outline`, `Ghost`, `Danger` |
 | Icon | `.icon(i)` | `Icon` | Optional leading icon |
 | Color | `.color(c)` | `Color` | Button color |
 | Density | `.density(d)` | `Density` | `Compact`, `Normal`, `Comfortable` |
@@ -29,13 +29,21 @@ Button::new("Click me")
 ### Example
 
 ```rust
-let count = use_state(ctx, || 0i32);
+let count = use_state(ctx, 0i32);
 let count_click = count.clone();
 
-Button::new(format!("Clicked {} times", count.get()))
+Button::new(&format!("Clicked {} times", count.get()))
     .variant(ButtonVariant::Primary)
     .on_click(move || {
         count_click.update(|v| v + 1);
     })
     .into()
+```
+
+`Button::new` takes a `&str`, so borrow the `format!` result rather than passing the `String`.
+
+Every variant side by side:
+
+```bash
+cargo run --example widget_gallery
 ```

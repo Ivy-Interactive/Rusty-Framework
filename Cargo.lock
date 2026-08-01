@@ -774,6 +774,7 @@ dependencies = [
  "tokio-tungstenite",
  "tower-http",
  "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 
@@ -781,9 +782,9 @@ dependencies = [
 name = "rusty-docs"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "rusty",
  "tokio",
- "tracing",
  "tracing-subscriber",
 ]
 
@@ -800,7 +801,6 @@ dependencies = [
 name = "rusty-server"
 version = "0.1.0"
 dependencies = [
- "axum",
  "clap",
  "rusty",
  "serde_json",

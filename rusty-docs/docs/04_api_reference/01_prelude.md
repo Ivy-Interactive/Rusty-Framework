@@ -18,7 +18,14 @@ use rusty::prelude::*;
 | Trait | Description |
 |-------|-------------|
 | `View` | The core trait — implement `build()` to define UI |
-| `WidgetData` | Trait for serializable widget data |
+
+`View` is the only trait the prelude exports. The two widget traits are not in it and need explicit imports:
+
+```rust
+use rusty::views::Widget;           // trait: widget_type / to_json / as_any
+use rusty::views::view::WidgetData; // trait: the type-erased form stored in Element
+use rusty::Widget as WidgetDerive;  // #[derive(Widget)] macro, same name as the trait
+```
 
 ### Views
 
@@ -31,16 +38,18 @@ use rusty::prelude::*;
 
 | Function | Description |
 |----------|-------------|
-| `use_state(ctx, init)` | Reactive state |
-| `use_ref(ctx, init)` | Non-reactive mutable state |
-| `use_effect(ctx, f)` | Side effect on every build |
-| `use_effect_with_deps(ctx, f, deps)` | Side effect on dependency change |
-| `use_memo(ctx, f, deps)` | Memoized computation |
-| `use_callback(ctx, f, deps)` | Memoized closure |
+| `use_state(ctx, init)` | Reactive state, from an initial value |
+| `use_ref(ctx, init)` | Non-reactive mutable state, from an initial value |
+| `use_effect(ctx, f)` | Side effect on mount |
+| `use_effect_with_deps(ctx, deps, f)` | Side effect on dependency change |
+| `use_memo(ctx, deps, compute)` | Memoized computation |
+| `use_callback(ctx, deps, f)` | Memoized closure |
 | `use_reducer(ctx, reducer, init)` | Dispatch-based state |
-| `use_interval(ctx, f, ms)` | Periodic timer |
+| `use_interval(ctx, Some(duration), f)` | Periodic timer; `None` pauses it |
 | `create_context(ctx, value)` | Provide context value |
 | `use_context::<T>(ctx)` | Consume context value |
+
+Note the argument order: wherever a hook takes dependencies, they come **before** the closure.
 
 ### State Types
 

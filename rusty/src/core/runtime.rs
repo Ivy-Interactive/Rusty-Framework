@@ -44,8 +44,8 @@ impl Runtime {
 
     /// Build a runtime whose views can resolve the given services via `use_service`.
     pub fn with_services(root: impl View, services: Arc<ServiceRegistry>) -> Self {
+        let (event_tx, event_rx) = mpsc::channel(2048);
         let (rebuild_tx, rebuild_rx) = mpsc::channel(256);
-        let (event_tx, event_rx) = mpsc::channel(256);
         let view_tree = ViewTree::new(Arc::new(root));
         Runtime {
             view_tree,

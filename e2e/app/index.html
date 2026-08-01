@@ -26,6 +26,13 @@
     code { font-family: monospace; background: #f5f5f5; padding: 2px 4px; border-radius: 2px; }
     label.checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
     .field-label { display: block; font-size: 0.85em; font-weight: 600; margin-bottom: 4px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; background: #eee; }
+    .badge[data-variant="outline"] { background: transparent; border: 1px solid #999; }
+    .dialog-box { border: 1px solid #999; border-radius: 8px; padding: 16px; background: #fff; }
+    .dialog-title { font-weight: bold; margin-bottom: 8px; }
+    .dialog-footer { margin-top: 12px; display: flex; gap: 8px; }
+    table { border-collapse: collapse; }
+    th, td { border: 1px solid #ddd; padding: 4px 8px; text-align: left; }
   </style>
 </head>
 <body>
@@ -410,6 +417,192 @@
             v.textContent = node.invalid;
             el.appendChild(v);
           }
+          break;
+        }
+        default: {
+          el.textContent = `[Unknown widget: ${type}]`;
+          // Still render children if present
+          (node.children || []).forEach(child => {
+            el.appendChild(renderWidget(child));
+          });
+          break;
+        }
+      }
+
+      return el;
+    }
+
+    // Simple patch application: on any update, request full re-render
+    // This is sufficient for E2E tests which just need to see updated state
+    function applyPatches(patches) {
+      // Patches change the JSON tree. For E2E simplicity, we track
+      // the current tree and apply patches to it, then re-render.
+      // But since we don't store the tree, we'll just wait for the
+      // next refresh. The server sends updates as patches but we can
+      // simply re-render by storing the last known tree.
+    }
+
+    // Enhanced: store last tree and apply patches
+    let currentTree = null;
+    const originalOnMessage = null;
+
+    // Reconnect state
+    let reconnectAttempts = 0;
+    const RETRY_DELAYS = [0, 2000, 10000];
+    const MAX_RECONNECT_ATTEMPTS = 10;
+
+    function scheduleReconnect() {
+      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        app.textContent = 'Connection failed after ' + MAX_RECONNECT_ATTEMPTS + ' attempts';
+        return;
+      }
+      const delay = RETRY_DELAYS[Math.min(reconnectAttempts, RETRY_DELAYS.length - 1)];
+      reconnectAttempts++;
+      app.textContent = 'Disconnected. Reconnecting in ' + delay + 'ms... (attempt ' + reconnectAttempts + ')';
+      setTimeout(() => connectEnhanced(), delay);
+    }
+
+    // Override to track tree state
+    function connectEnhanced() {
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => {
+        reconnectAttempts = 0;
+        app.textContent = 'Connected, waiting for render...';
+      };
+      ws.onclose = () => { scheduleReconnect(); };
+      ws.onerror = () => {};
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.method === 'refresh') {
+          currentTree = msg.widgets;
+          app.innerHTML = '';
+          app.appendChild(renderWidget(currentTree));
+        } else if (msg.method === 'update') {
+          if (currentTree && msg.patches) {
+            for (const patch of msg.patches) {
+              applyPatch(currentTree, patch);
+            }
+            app.innerHTML = '';
+            app.appendChild(renderWidget(currentTree));
+          }
+        }
+      };
+    }
+
+    function applyPatch(tree, patch) {
+      if (patch.op === 'replace') {
+        // Navigate the path and replace
+        const parts = patch.path.split('/').filter(Boolean);
+        let node = tree;
+        for (let i = 0; i < parts.length - 1; i++) {
+          const key = parts[i];
+          if (Array.isArray(node)) {
+            node = node[parseInt(key)];
+          } else if (node && typeof node === 'object') {
+            node = node[key];
+          }
+        }
+        if (node && parts.length > 0) {
+          const lastKey = parts[parts.length - 1];
+          if (Array.isArray(node)) {
+            node[parseInt(lastKey)] = patch.value;
+          } else {
+            node[lastKey] = patch.value;
+          }
+        }
+      }
+    }
+
+    connectEnhanced();
+  </script>
+</body>
+</html>
+        case 'badge': {
+          const badge = document.createElement('span');
+          badge.classList.add('badge');
+          badge.textContent = node.label || '';
+          if (node.variant) badge.setAttribute('data-variant', node.variant);
+          if (node.color) badge.setAttribute('data-color', node.color);
+          el.appendChild(badge);
+          break;
+        }
+        case 'progress': {
+          if (node.label) {
+            const lbl = document.createElement('span');
+            lbl.classList.add('field-label');
+            lbl.textContent = node.label;
+            el.appendChild(lbl);
+          }
+          const bar = document.createElement('progress');
+          if (node.indeterminate) {
+            el.setAttribute('data-indeterminate', 'true');
+          } else {
+            bar.value = node.value != null ? node.value : 0;
+            bar.max = node.max != null ? node.max : 1;
+          }
+          el.appendChild(bar);
+          break;
+        }
+        case 'table': {
+          const table = document.createElement('table');
+          if (node.sortBy) {
+            el.setAttribute('data-sort-by', node.sortBy);
+            el.setAttribute('data-sort-ascending', String(!!node.sortAscending));
+          }
+          const columns = node.columns || [];
+          const thead = document.createElement('thead');
+          const headRow = document.createElement('tr');
+          columns.forEach(col => {
+            const th = document.createElement('th');
+            th.textContent = col.label;
+            th.setAttribute('data-key', col.key);
+            if (col.sortable) th.setAttribute('data-sortable', 'true');
+            headRow.appendChild(th);
+          });
+          thead.appendChild(headRow);
+          table.appendChild(thead);
+          const tbody = document.createElement('tbody');
+          (node.rows || []).forEach(row => {
+            const tr = document.createElement('tr');
+            columns.forEach(col => {
+              const td = document.createElement('td');
+              const cell = row[col.key];
+              td.textContent = cell != null ? String(cell) : '';
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+          table.appendChild(tbody);
+          el.appendChild(table);
+          break;
+        }
+        case 'dialog': {
+          el.setAttribute('data-open', String(!!node.open));
+          if (!node.open) el.style.display = 'none';
+          const box = document.createElement('div');
+          box.classList.add('dialog-box');
+          if (node.title) {
+            const t = document.createElement('div');
+            t.classList.add('dialog-title');
+            t.textContent = node.title;
+            box.appendChild(t);
+          }
+          (node.children || []).forEach(child => {
+            box.appendChild(renderWidget(child));
+          });
+          if (node.footer) {
+            const f = document.createElement('div');
+            f.classList.add('dialog-footer');
+            node.footer.forEach(child => f.appendChild(renderWidget(child)));
+            box.appendChild(f);
+          }
+          el.appendChild(box);
+          break;
+        }
+        case 'tooltip': {
+          el.setAttribute('title', node.content || '');
+          el.setAttribute('data-tooltip', node.content || '');
+          if (node.child) el.appendChild(renderWidget(node.child));
           break;
         }
         default: {
