@@ -85,8 +85,8 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Lint
-        run: pnpm lint --max-warnings=0
+      - name: Lint  # --max-warnings=0 lives in the lint script; vp rejects the flag twice
+        run: pnpm lint
 
       - name: Typecheck
         run: pnpm exec tsc -b

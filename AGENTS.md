@@ -20,7 +20,7 @@ downgrade the project config.
 
 CI runs these three, from `src/frontend`, after `pnpm install --frozen-lockfile`:
 
-pnpm lint --max-warnings=0
+pnpm lint
 pnpm exec tsc -b
 pnpm test
 
