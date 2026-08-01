@@ -8,6 +8,8 @@ cargo test --workspace
 
 cargo fmt --all
 
+**Note:** Rust formatting is enforced on pre-commit via `.husky/pre-commit`. Staged `.rs` files are auto-formatted with `rustfmt --edition 2021 --config skip_children=true` and re-added. Partially staged files are checked only and will block the commit if unformatted.
+
 ## Lint
 cargo clippy --workspace --all-targets -- -D warnings
 
@@ -15,6 +17,12 @@ cargo clippy --workspace --all-targets -- -D warnings
 Vite+ toolchain, pnpm@10.33.0. Always `pnpm run <script>` or `pnpm exec vp` —
 a globally installed `vp` may be an older version and `vp migrate` would
 downgrade the project config.
+
+CI runs these three, from `src/frontend`, after `pnpm install --frozen-lockfile`:
+
+pnpm lint --max-warnings=0
+pnpm exec tsc -b
+pnpm test
 
 `vite-plus`, `@voidzero-dev/vite-plus-core` (aliased as `vite`) and `vitest` are
 grouped in `renovate.json` as the "vite-plus toolchain" so they bump together:
