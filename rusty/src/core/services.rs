@@ -142,6 +142,27 @@ mod tests {
     }
 
     #[test]
+    fn test_two_distinct_types_coexist() {
+        let registry = ServiceRegistry::new();
+        registry.register(Arc::new(Greeter {
+            greeting: "hi".to_string(),
+        }));
+        registry.register(Arc::new(Counter { value: 128 }));
+
+        assert_eq!(registry.len(), 2);
+        assert_eq!(registry.get::<Greeter>().unwrap().greeting, "hi");
+        assert_eq!(registry.get::<Counter>().unwrap().value, 128);
+    }
+
+    #[test]
+    fn test_is_empty_tracks_registration() {
+        let registry = ServiceRegistry::new();
+        assert!(registry.is_empty());
+        registry.register(Arc::new(Counter { value: 1 }));
+        assert!(!registry.is_empty());
+    }
+
+    #[test]
     fn test_app_context_carries_connection_id() {
         let registry = ServiceRegistry::new();
         registry.register(Arc::new(AppContext::new("conn-42")));
