@@ -126,11 +126,8 @@ mod tests {
         let _: bool = store.get_or_init_state(2, || true);
 
         assert_eq!(store.get_or_init_state::<i32>(0, || 0), 10);
-        assert_eq!(
-            store.get_or_init_state::<String>(1, || String::new()),
-            "hello"
-        );
-        assert_eq!(store.get_or_init_state::<bool>(2, || false), true);
+        assert_eq!(store.get_or_init_state::<String>(1, String::new), "hello");
+        assert!(store.get_or_init_state::<bool>(2, || false));
     }
 
     #[test]
