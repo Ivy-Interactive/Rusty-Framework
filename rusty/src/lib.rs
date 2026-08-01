@@ -12,8 +12,8 @@ pub mod prelude {
     };
     pub use crate::hooks::{
         create_context, try_use_service, use_callback, use_context, use_effect,
-        use_effect_with_deps, use_form, use_interval, use_memo, use_reducer, use_ref,
-        use_service, use_state, DynEq, Ref, State,
+        use_effect_with_deps, use_form, use_interval, use_memo, use_reducer, use_ref, use_service,
+        use_state, DynEq, Ref, State,
     };
     pub use crate::server::RustyServer;
     pub use crate::shared::{Align, Color, Density, Icon, Justify, NamedColor, Size};

@@ -229,7 +229,10 @@ mod tests {
 
     #[test]
     fn renamed_widgets_map_to_ivy_names() {
-        assert_eq!(ivy_widget("select"), Some(IvyWidget::One("Ivy.SelectInput")));
+        assert_eq!(
+            ivy_widget("select"),
+            Some(IvyWidget::One("Ivy.SelectInput"))
+        );
         assert_eq!(
             ivy_widget("checkbox"),
             Some(IvyWidget::One("Ivy.BoolInput"))
