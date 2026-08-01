@@ -3,9 +3,6 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
-
-const scriptPath = fileURLToPath(new URL("./check-installed-versions.mjs", import.meta.url));
 
 describe("check-installed-versions", () => {
   let tempDir: string;
