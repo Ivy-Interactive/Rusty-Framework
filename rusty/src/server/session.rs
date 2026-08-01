@@ -456,4 +456,300 @@ mod tests {
         let json = serde_json::to_value(&tree).unwrap().to_string();
         assert!(json.contains("lifecycle-test"));
     }
+
+    // --- App routing ---
+
+    fn label_factory(label: &'static str) -> AppFactory {
+        Arc::new(move || Box::new(TestView::new(label)))
+    }
+
+    /// Two apps: `alpha` (registered first, so the default) and `beta`.
+    fn two_app_store() -> AppSessionStore {
+        let mut apps = AppRegistry::new();
+        apps.register("alpha", "Alpha", label_factory("alpha-view"));
+        apps.register("beta", "Beta", label_factory("beta-view"));
+        AppSessionStore::with_apps(Arc::new(apps), Arc::new(ServiceRegistry::new()))
+    }
+
+    /// Build a session's tree and return it as JSON, which is what the client sees.
+    async fn session_json(session: &Arc<RwLock<AppSession>>) -> String {
+        let tree = session.write().await.runtime.build().await;
+        serde_json::to_value(&tree).unwrap().to_string()
+    }
+
+    #[tokio::test]
+    async fn test_new_registers_root_under_default_app_id() {
+        let store = AppSessionStore::new(label_factory("root-view"));
+
+        assert_eq!(store.apps().ids(), vec![AppIds::DEFAULT]);
+
+        let session = store.create_session("conn-1".to_string()).await;
+        assert_eq!(session.read().await.app_id, AppIds::DEFAULT);
+        assert!(session_json(&session).await.contains("root-view"));
+    }
+
+    #[tokio::test]
+    async fn test_create_session_with_explicit_app_id_builds_that_app() {
+        let store = two_app_store();
+        let session = store
+            .create_session_for_app("conn-1".to_string(), Some("beta"))
+            .await;
+
+        assert_eq!(session.read().await.app_id, "beta");
+        assert!(session_json(&session).await.contains("beta-view"));
+    }
+
+    #[tokio::test]
+    async fn test_create_session_without_app_id_builds_default() {
+        let store = two_app_store();
+        let session = store
+            .create_session_for_app("conn-1".to_string(), None)
+            .await;
+
+        assert_eq!(session.read().await.app_id, "alpha");
+        assert!(session_json(&session).await.contains("alpha-view"));
+    }
+
+    #[tokio::test]
+    async fn test_create_session_with_unknown_app_id_falls_back_to_default() {
+        let store = two_app_store();
+        let session = store
+            .create_session_for_app("conn-1".to_string(), Some("nope"))
+            .await;
+
+        // A bookmarked dead link should still land somewhere.
+        assert_eq!(session.read().await.app_id, "alpha");
+        assert!(session_json(&session).await.contains("alpha-view"));
+    }
+
+    #[tokio::test]
+    async fn test_sessions_on_different_apps_get_different_trees() {
+        let store = two_app_store();
+        let a = store
+            .create_session_for_app("conn-a".to_string(), Some("alpha"))
+            .await;
+        let b = store
+            .create_session_for_app("conn-b".to_string(), Some("beta"))
+            .await;
+
+        let json_a = session_json(&a).await;
+        let json_b = session_json(&b).await;
+        assert!(json_a.contains("alpha-view"), "got {json_a}");
+        assert!(json_b.contains("beta-view"), "got {json_b}");
+        assert_ne!(json_a, json_b);
+        assert_eq!(store.session_count().await, 2);
+    }
+
+    #[tokio::test]
+    async fn test_navigate_session_swaps_the_mounted_app() {
+        let store = two_app_store();
+        let session = store.create_session("conn-1".to_string()).await;
+        assert!(session_json(&session).await.contains("alpha-view"));
+
+        assert!(store.navigate_session(&session, "beta").await);
+
+        assert_eq!(session.read().await.app_id, "beta");
+        let json = session_json(&session).await;
+        assert!(json.contains("beta-view"), "got {json}");
+        assert!(!json.contains("alpha-view"), "got {json}");
+    }
+
+    #[tokio::test]
+    async fn test_navigate_session_resets_the_reconciler() {
+        let store = two_app_store();
+        let session = store.create_session("conn-1".to_string()).await;
+
+        // Establish a baseline on the old app.
+        {
+            let mut guard = session.write().await;
+            let tree = guard.runtime.build().await;
+            let value = serde_json::to_value(&tree).unwrap();
+            guard.reconciler.reconcile(&value);
+        }
+
+        assert!(store.navigate_session(&session, "beta").await);
+
+        // A fresh reconciler has no baseline, so the first reconcile yields no patches -
+        // the caller must send a full Refresh instead.
+        let mut guard = session.write().await;
+        let tree = guard.runtime.build().await;
+        let value = serde_json::to_value(&tree).unwrap();
+        assert!(guard.reconciler.reconcile(&value).is_none());
+    }
+
+    #[tokio::test]
+    async fn test_navigate_session_to_unknown_app_holds_position() {
+        let store = two_app_store();
+        let session = store.create_session("conn-1".to_string()).await;
+
+        assert!(!store.navigate_session(&session, "does-not-exist").await);
+
+        // Unlike an initial connection, an explicit navigate must not fall back.
+        assert_eq!(session.read().await.app_id, "alpha");
+        assert!(session_json(&session).await.contains("alpha-view"));
+    }
+
+    #[tokio::test]
+    async fn test_navigate_session_to_the_same_app_rebuilds_it() {
+        let store = two_app_store();
+        let session = store.create_session("conn-1".to_string()).await;
+
+        assert!(store.navigate_session(&session, "alpha").await);
+
+        assert_eq!(session.read().await.app_id, "alpha");
+        assert!(session_json(&session).await.contains("alpha-view"));
+    }
+
+    #[tokio::test]
+    async fn test_navigation_isolates_sessions() {
+        let store = two_app_store();
+        let a = store.create_session("conn-a".to_string()).await;
+        let b = store.create_session("conn-b".to_string()).await;
+
+        assert!(store.navigate_session(&a, "beta").await);
+
+        assert_eq!(a.read().await.app_id, "beta");
+        assert_eq!(b.read().await.app_id, "alpha");
+        assert!(session_json(&b).await.contains("alpha-view"));
+    }
+
+    #[tokio::test]
+    async fn test_empty_registry_yields_error_not_found_session() {
+        let store = AppSessionStore::with_apps(
+            Arc::new(AppRegistry::new()),
+            Arc::new(ServiceRegistry::new()),
+        );
+        let session = store.create_session("conn-1".to_string()).await;
+
+        // A connection arriving before any app is registered gets an empty session,
+        // not a closed socket.
+        assert_eq!(session.read().await.app_id, AppIds::ERROR_NOT_FOUND);
+        let tree = session.write().await.runtime.build().await;
+        let json = serde_json::to_value(&tree).unwrap();
+        assert_eq!(json["kind"], "empty");
+    }
+
+    #[tokio::test]
+    async fn test_server_level_services_reach_every_app() {
+        struct Config {
+            name: String,
+        }
+
+        let server_services = ServiceRegistry::new();
+        server_services.register(Arc::new(Config {
+            name: "shared".to_string(),
+        }));
+
+        let mut apps = AppRegistry::new();
+        apps.register("alpha", "Alpha", label_factory("alpha-view"));
+        apps.register("beta", "Beta", label_factory("beta-view"));
+        let store = AppSessionStore::with_apps(Arc::new(apps), Arc::new(server_services));
+
+        for app_id in ["alpha", "beta"] {
+            let session = store
+                .create_session_for_app(format!("conn-{app_id}"), Some(app_id))
+                .await;
+            let config = session
+                .read()
+                .await
+                .services
+                .get::<Config>()
+                .expect("a server-level service should resolve in every app");
+            assert_eq!(config.name, "shared");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_navigation_preserves_framework_and_server_services() {
+        struct Config;
+
+        let server_services = ServiceRegistry::new();
+        server_services.register(Arc::new(Config));
+
+        let mut apps = AppRegistry::new();
+        apps.register("alpha", "Alpha", label_factory("alpha-view"));
+        apps.register("beta", "Beta", label_factory("beta-view"));
+        let store = AppSessionStore::with_apps(Arc::new(apps), Arc::new(server_services));
+
+        let session = store.create_session("conn-1".to_string()).await;
+        let before = session.read().await.services.clone();
+        let query_before = before.get::<QueryService>().unwrap();
+        let signals_before = before.get::<SignalRegistry>().unwrap();
+
+        assert!(store.navigate_session(&session, "beta").await);
+
+        let after = session.read().await.services.clone();
+        assert!(
+            !Arc::ptr_eq(&before, &after),
+            "navigation builds a fresh registry"
+        );
+
+        // Server-wide state survives the swap.
+        assert!(Arc::ptr_eq(
+            &after.get::<QueryService>().unwrap(),
+            &query_before
+        ));
+        assert!(Arc::ptr_eq(
+            &after.get::<QueryService>().unwrap(),
+            store.query_service()
+        ));
+        assert!(Arc::ptr_eq(
+            &after.get::<ServerSignals>().unwrap().registry(),
+            store.server_signals()
+        ));
+        assert!(
+            after.get::<Config>().is_some(),
+            "server services are re-folded"
+        );
+
+        // Session-scoped state does not: the new app gets its own signals.
+        assert!(!Arc::ptr_eq(
+            &after.get::<SignalRegistry>().unwrap(),
+            &signals_before
+        ));
+
+        // The connection id is carried across, so download URLs minted before the
+        // navigation still resolve.
+        assert_eq!(after.get::<AppContext>().unwrap().connection_id, "conn-1");
+        assert_eq!(
+            after.get::<DownloadService>().unwrap().connection_id(),
+            "conn-1"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_per_connection_services_win_over_server_level_ones() {
+        // `extend_from` must run BEFORE the framework registrations. Reversed, this
+        // server-level AppContext would overwrite the per-connection one, handing every
+        // session the same connection id - and since download URLs are keyed by
+        // `AppContext::connection_id`, that is a cross-session download leak.
+        let server_services = ServiceRegistry::new();
+        server_services.register(Arc::new(AppContext::new("server-wide")));
+
+        let mut apps = AppRegistry::new();
+        apps.register("alpha", "Alpha", label_factory("alpha-view"));
+        apps.register("beta", "Beta", label_factory("beta-view"));
+        let store = AppSessionStore::with_apps(Arc::new(apps), Arc::new(server_services));
+
+        let session = store.create_session("conn-1".to_string()).await;
+        assert_eq!(
+            session
+                .read()
+                .await
+                .services
+                .get::<AppContext>()
+                .unwrap()
+                .connection_id,
+            "conn-1"
+        );
+
+        // And it must still hold after a navigation rebuilds the registry.
+        assert!(store.navigate_session(&session, "beta").await);
+        let after = session.read().await.services.clone();
+        assert_eq!(after.get::<AppContext>().unwrap().connection_id, "conn-1");
+        assert_eq!(
+            after.get::<DownloadService>().unwrap().connection_id(),
+            "conn-1"
+        );
+    }
 }
