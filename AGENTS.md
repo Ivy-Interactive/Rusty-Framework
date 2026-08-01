@@ -19,6 +19,8 @@ Frontend, from `src/frontend` (there is no root `package.json`):
 pnpm install --frozen-lockfile
 pnpm lint
 pnpm exec tsc -b
+pnpm run build
+pnpm run check:bundle
 pnpm test
 pnpm format:check
 ```
@@ -30,8 +32,7 @@ Vite+ toolchain, pnpm@10.33.0. Always `pnpm run <script>` or `pnpm exec vp` —
 a globally installed `vp` may be an older version and `vp migrate` would
 downgrade the project config.
 
-CI's `frontend` job runs the first four of the frontend commands above; `pnpm format:check`
-is local-only.
+CI's `frontend` job runs every command above except `pnpm format:check`, which is local-only.
 
 `vite-plus`, `@voidzero-dev/vite-plus-core` (aliased as `vite`) and `vitest` are
 grouped in `renovate.json` as the "vite-plus toolchain" so they bump together:
