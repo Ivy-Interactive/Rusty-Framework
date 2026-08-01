@@ -75,18 +75,17 @@ if (vitePlusVersion && vitestVersion) {
 // Check installed tree against declared versions
 const installedChecks = [
   { packageName: "vite-plus", expectedVersion: vitePlusVersion },
-  { packageName: "vite", realName: "@voidzero-dev/vite-plus-core", expectedVersion: vitePlusVersion },
+  { packageName: "vite", expectedVersion: vitePlusVersion },
   { packageName: "vitest", expectedVersion: vitestVersion },
 ];
 
 const installed = {};
 let anyMissing = false;
 
-for (const { packageName, realName, expectedVersion } of installedChecks) {
-  const resolveName = realName ?? packageName;
+for (const { packageName, expectedVersion } of installedChecks) {
   try {
     const require = createRequire(new URL("../package.json", import.meta.url));
-    const pkgPath = require.resolve(`${resolveName}/package.json`);
+    const pkgPath = require.resolve(`${packageName}/package.json`);
     const pkgData = JSON.parse(readFileSync(pkgPath, "utf8"));
     installed[packageName] = pkgData.version;
 
