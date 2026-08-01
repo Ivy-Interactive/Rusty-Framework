@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 
 use crate::core::event_registry::EventRegistry;
+use crate::core::services::ServiceRegistry;
 use crate::core::view_tree::ViewTree;
 use crate::hooks::hook_store::HookStore;
 use crate::shared::ViewId;
@@ -33,10 +34,16 @@ pub struct Runtime {
     event_rx: mpsc::Receiver<RuntimeMessage>,
     rebuild_tx: mpsc::Sender<ViewId>,
     rebuild_rx: mpsc::Receiver<ViewId>,
+    services: Arc<ServiceRegistry>,
 }
 
 impl Runtime {
     pub fn new(root: impl View) -> Self {
+        Runtime::with_services(root, Arc::new(ServiceRegistry::new()))
+    }
+
+    /// Build a runtime whose views can resolve the given services via `use_service`.
+    pub fn with_services(root: impl View, services: Arc<ServiceRegistry>) -> Self {
         let (event_tx, event_rx) = mpsc::channel(2048);
         let (rebuild_tx, rebuild_rx) = mpsc::channel(256);
         let view_tree = ViewTree::new(Arc::new(root));
@@ -50,7 +57,13 @@ impl Runtime {
             event_rx,
             rebuild_tx,
             rebuild_rx,
+            services,
         }
+    }
+
+    /// The service registry shared with every `BuildContext` this runtime creates.
+    pub fn services(&self) -> &Arc<ServiceRegistry> {
+        &self.services
     }
 
     /// Get a sender for dispatching events to the runtime.
@@ -79,11 +92,13 @@ impl Runtime {
         let old_children: Vec<ViewId> = self.view_tree.children(&view_id);
 
         // Synchronous build phase — construct element, extract registry and effects
+        let services = self.services.clone();
         let (element, registry, effects) = {
             let store = self.hook_stores.entry(view_id).or_default();
             let rebuild_tx = self.rebuild_tx.clone();
 
-            let mut ctx = BuildContext::with_view_id(store, Some(rebuild_tx), view_id);
+            let mut ctx = BuildContext::with_view_id(store, Some(rebuild_tx), view_id)
+                .with_services(services);
             ctx.reset();
 
             // Clone the Arc<dyn View> so we can borrow view immutably while

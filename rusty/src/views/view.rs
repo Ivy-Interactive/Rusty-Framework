@@ -7,6 +7,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use crate::core::event_registry::{EventCallback, EventRegistry};
+use crate::core::services::ServiceRegistry;
 use crate::hooks::hook_store::HookStore;
 use crate::shared::ViewId;
 
@@ -153,6 +154,9 @@ pub struct BuildContext<'a> {
     /// Cloned snapshots of ancestor context maps for safe context lookup.
     /// Each entry is a (ViewId, context map) pair, cheaply cloned via Arc.
     pub(crate) ancestor_contexts: Vec<(ViewId, ContextSnapshot)>,
+    /// Shared services resolvable by `use_service`. Empty unless the runtime was
+    /// built with `Runtime::with_services`.
+    pub(crate) services: Arc<ServiceRegistry>,
 }
 
 /// Cleanup function returned by an effect callback.
@@ -197,7 +201,19 @@ impl<'a> BuildContext<'a> {
             widget_id_counter: 0,
             child_views: Vec::new(),
             ancestor_contexts: Vec::new(),
+            services: Arc::new(ServiceRegistry::new()),
         }
+    }
+
+    /// Attach a service registry so `use_service` can resolve from this context.
+    pub fn with_services(mut self, services: Arc<ServiceRegistry>) -> Self {
+        self.services = services;
+        self
+    }
+
+    /// The service registry backing `use_service`.
+    pub fn services(&self) -> &Arc<ServiceRegistry> {
+        &self.services
     }
 
     /// Reset hook index to 0 between builds (like Ivy's ViewContext.Reset()).
@@ -306,7 +322,8 @@ impl<'a> BuildContext<'a> {
         let mut owned_store = child_store.map(std::mem::take).unwrap_or_default();
 
         let mut child_ctx =
-            BuildContext::with_view_id(&mut owned_store, self.rebuild_tx.clone(), child_view_id);
+            BuildContext::with_view_id(&mut owned_store, self.rebuild_tx.clone(), child_view_id)
+                .with_services(self.services.clone());
         child_ctx.reset();
         // Set ancestor contexts: current view's store + all ancestors above.
         // Clone via Arc::clone per entry (cheap reference count bump).
