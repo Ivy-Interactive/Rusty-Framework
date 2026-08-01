@@ -8,7 +8,7 @@ use std::path::PathBuf;
 #[command(name = "widget_harness")]
 #[command(about = "Launch a minimal Rusty app exercising a single widget for E2E testing")]
 struct Cli {
-    /// Widget to test (button, text, text_input, number_input, select, checkbox, layout, card)
+    /// Widget to test (button, text, text_input, number_input, select, checkbox, layout, card, query)
     widget: String,
 
     /// Port to listen on (0 for auto-assign)
@@ -226,6 +226,51 @@ impl View for CardApp {
     }
 }
 
+/// Exercises `use_query`. The fetcher sleeps, so the loading-to-loaded
+/// transition arrives over the WebSocket push path rather than in the first
+/// render.
+struct QueryApp;
+
+impl View for QueryApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let result = use_query(
+            ctx,
+            Some("harness-greeting"),
+            || async {
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                Ok("Hello from the query cache".to_string())
+            },
+            QueryOptions::default(),
+        );
+
+        let status = if result.loading {
+            "Loading...".to_string()
+        } else if let Some(error) = &result.error {
+            format!("Error: {}", error)
+        } else {
+            result.value.clone().unwrap_or_default()
+        };
+        let validating = if result.validating {
+            "validating"
+        } else {
+            "idle"
+        };
+        let mutator = result.mutator.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Query Test"))
+            .child(TextBlock::paragraph(&status))
+            .child(TextBlock::label(validating))
+            .child(
+                Button::new("Revalidate")
+                    .variant(ButtonVariant::Primary)
+                    .on_click(move || mutator.revalidate()),
+            )
+            .into()
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
@@ -244,6 +289,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "checkbox" => RustyServer::new(port, || CheckboxApp),
         "layout" => RustyServer::new(port, || LayoutApp),
         "card" => RustyServer::new(port, || CardApp),
+        "query" => RustyServer::new(port, || QueryApp),
         other => {
             eprintln!("Unknown widget: {}", other);
             std::process::exit(1);
