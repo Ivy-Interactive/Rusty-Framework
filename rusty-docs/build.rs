@@ -1,6 +1,5 @@
-use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 fn main() {
     let docs_dir = Path::new("docs");
@@ -14,7 +13,7 @@ fn main() {
     }
     fs::create_dir_all(out_dir).expect("failed to create generated dir");
 
-    let mut sections: BTreeMap<String, Section> = BTreeMap::new();
+    let mut sections: Vec<Section> = Vec::new();
 
     // Walk top-level directories in docs/
     let mut entries: Vec<_> = fs::read_dir(docs_dir)
@@ -26,13 +25,13 @@ fn main() {
 
     for section_entry in &entries {
         let section_dir = section_entry.path();
-        let section_name = section_entry.file_name().to_string_lossy().to_string();
-        let (order, clean_name) = parse_prefix(&section_name);
+        let dir_name = section_entry.file_name().to_string_lossy().to_string();
+        let (order, clean_name) = parse_prefix(&dir_name);
         let module_name = clean_name.to_lowercase();
 
         let mut pages = Vec::new();
 
-        let mut page_entries: Vec<_> = fs::read_dir(&section_dir)
+        let page_entries: Vec<_> = fs::read_dir(&section_dir)
             .expect("failed to read section dir")
             .filter_map(|e| e.ok())
             .filter(|e| {
@@ -40,24 +39,22 @@ fn main() {
                 name.ends_with(".md") && name != "_index.md"
             })
             .collect();
-        page_entries.sort_by_key(|e| e.file_name());
 
         for page_entry in &page_entries {
-            let file_name = page_entry.file_name().to_string_lossy().to_string();
-            let (page_order, page_clean) = parse_prefix(file_name.trim_end_matches(".md"));
-            let page_module = page_clean.to_lowercase();
+            let file_stem = page_entry.file_name().to_string_lossy().to_string();
+            let file_stem = file_stem.trim_end_matches(".md").to_string();
+            let (page_order, page_clean) = parse_prefix(&file_stem);
 
             pages.push(Page {
                 order: page_order,
-                module_name: page_module,
+                module_name: page_clean.to_lowercase(),
                 display_name: to_title_case(&page_clean),
-                relative_path: page_entry
-                    .path()
-                    .strip_prefix(".")
-                    .unwrap_or(&page_entry.path())
-                    .to_path_buf(),
+                file_stem,
             });
         }
+
+        // Author order comes from the numeric filename prefix, not the alphabet.
+        pages.sort_by(|a, b| (a.order, &a.module_name).cmp(&(b.order, &b.module_name)));
 
         // Read _index.md for section title
         let index_path = section_dir.join("_index.md");
@@ -68,19 +65,20 @@ fn main() {
             to_title_case(&clean_name)
         };
 
-        sections.insert(
-            module_name.clone(),
-            Section {
-                order,
-                module_name,
-                display_name: section_title,
-                pages,
-            },
-        );
+        sections.push(Section {
+            order,
+            dir_name,
+            module_name,
+            display_name: section_title,
+            pages,
+        });
     }
 
+    // Author order comes from the numeric directory prefix, not the alphabet.
+    sections.sort_by(|a, b| (a.order, &a.module_name).cmp(&(b.order, &b.module_name)));
+
     // Generate a module file per section
-    for section in sections.values() {
+    for section in &sections {
         let section_dir = out_dir.join(&section.module_name);
         fs::create_dir_all(&section_dir).expect("failed to create section dir");
 
@@ -105,10 +103,7 @@ fn main() {
     let mut mod_rs = String::new();
 
     // Alphabetical, to match how rustfmt sorts `pub mod` declarations.
-    let mut section_modules: Vec<&str> = sections
-        .values()
-        .map(|s| s.module_name.as_str())
-        .collect::<Vec<_>>();
+    let mut section_modules: Vec<&str> = sections.iter().map(|s| s.module_name.as_str()).collect();
     section_modules.sort_unstable();
     for module_name in &section_modules {
         mod_rs.push_str(&format!("pub mod {};\n", module_name));
@@ -126,7 +121,7 @@ fn main() {
     mod_rs.push_str("pub fn all_pages() -> Vec<DocPage> {\n");
     mod_rs.push_str("    vec![\n");
 
-    for section in sections.values() {
+    for section in &sections {
         for page in &section.pages {
             let struct_name = to_pascal_case(&page.module_name);
             // One field per line with a trailing comma — the shape rustfmt produces
@@ -157,18 +152,9 @@ fn main() {
 fn generate_page_module(section_dir: &Path, section: &Section, page: &Page) {
     let struct_name = to_pascal_case(&page.module_name);
 
-    // Compute the relative path from generated source file to the docs markdown
-    let md_path = format!(
-        "../../../docs/{}/{}.md",
-        find_original_dir_name("docs", &section.module_name),
-        find_original_file_name(
-            &format!(
-                "docs/{}",
-                find_original_dir_name("docs", &section.module_name)
-            ),
-            &page.module_name,
-        ),
-    );
+    // Relative path from the generated source file back to the docs markdown.
+    // Both components come from the walk, which already saw the real names.
+    let md_path = format!("../../../docs/{}/{}.md", section.dir_name, page.file_stem);
 
     let source = format!(
         r#"use rusty::prelude::*;
@@ -197,54 +183,25 @@ impl View for {struct_name}Page {{
         .expect("failed to write page module");
 }
 
-fn find_original_dir_name(base: &str, module_name: &str) -> String {
-    let base_path = Path::new(base);
-    if let Ok(entries) = fs::read_dir(base_path) {
-        for entry in entries.flatten() {
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                let name = entry.file_name().to_string_lossy().to_string();
-                let (_, clean) = parse_prefix(&name);
-                if clean.to_lowercase() == module_name {
-                    return name;
-                }
-            }
-        }
-    }
-    module_name.to_string()
-}
-
-fn find_original_file_name(dir: &str, module_name: &str) -> String {
-    let dir_path = Path::new(dir);
-    if let Ok(entries) = fs::read_dir(dir_path) {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.ends_with(".md") && name != "_index.md" {
-                let stem = name.trim_end_matches(".md");
-                let (_, clean) = parse_prefix(stem);
-                if clean.to_lowercase() == module_name {
-                    return name.trim_end_matches(".md").to_string();
-                }
-            }
-        }
-    }
-    module_name.to_string()
-}
-
+/// A top-level docs directory, e.g. `docs/03_widgets`.
 struct Section {
-    #[allow(dead_code)]
+    /// Numeric filename prefix — drives sidebar order.
     order: u32,
+    /// Directory name as it appears on disk, prefix included.
+    dir_name: String,
     module_name: String,
     display_name: String,
     pages: Vec<Page>,
 }
 
+/// A single markdown page within a section, e.g. `docs/03_widgets/01_button.md`.
 struct Page {
-    #[allow(dead_code)]
+    /// Numeric filename prefix — drives sidebar order.
     order: u32,
     module_name: String,
     display_name: String,
-    #[allow(dead_code)]
-    relative_path: PathBuf,
+    /// File name without the `.md` extension, prefix included.
+    file_stem: String,
 }
 
 fn parse_prefix(name: &str) -> (u32, String) {
