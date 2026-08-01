@@ -189,7 +189,6 @@ export default defineConfig({
   base: "./",
   staged: {
     "src/**/*.{ts,tsx,js,jsx}": "vp check --fix",
-    "../**/*.cs": "dotnet format ../Ivy-Framework.slnx --include",
   },
 
   plugins: [react(), tailwindcss(), mkcert(), injectMeta(mode)],

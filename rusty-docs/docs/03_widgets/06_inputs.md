@@ -1,11 +1,15 @@
 ## Input Widgets
 
-Rusty-Framework provides several input widgets for forms and user interaction.
+Rusty-Framework provides several input widgets for forms and user interaction. All four appear together in the `form` example:
+
+```bash
+cargo run --example form
+```
 
 ### TextInput
 
 ```rust
-let name = use_state(ctx, || String::new());
+let name = use_state(ctx, String::new());
 let name_change = name.clone();
 
 TextInput::new()
@@ -21,7 +25,7 @@ TextInput::new()
 ### NumberInput
 
 ```rust
-let age = use_state(ctx, || 0.0f64);
+let age = use_state(ctx, 0.0f64);
 let age_change = age.clone();
 
 NumberInput::new()
@@ -41,7 +45,7 @@ NumberInput::new()
 ```rust
 use rusty::widgets::input::SelectOption;
 
-let choice = use_state(ctx, || String::from("a"));
+let choice = use_state(ctx, String::from("a"));
 let choice_change = choice.clone();
 
 Select::new(vec![
@@ -59,7 +63,7 @@ Select::new(vec![
 ### Checkbox
 
 ```rust
-let agreed = use_state(ctx, || false);
+let agreed = use_state(ctx, false);
 let agreed_change = agreed.clone();
 
 Checkbox::new(agreed.get())

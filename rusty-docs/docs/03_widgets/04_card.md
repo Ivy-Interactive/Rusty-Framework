@@ -18,11 +18,13 @@ Card::new()
 
 ### Children
 
+`.footer()` takes a `Vec<Element>`, so convert each widget with `.into()`:
+
 ```rust
 Card::new()
     .title("User Profile")
     .child(TextBlock::paragraph("Card content goes here"))
-    .footer(Button::new("Edit"))
+    .footer(vec![Button::new("Edit").into()])
     .into()
 ```
 

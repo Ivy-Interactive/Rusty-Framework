@@ -84,11 +84,17 @@ Developer options are stored in localStorage and persist across:
 
 ## Code Quality
 
-The frontend project uses **Vite+** integrated tools (**Oxlint** and **Oxfmt**) for high-performance code quality and formatting, alongside automatic pre-commit hooks. It is also responsible for handling `dotnet format` precommit hook for the BE.
+The frontend project uses **Vite+** integrated tools (**Oxlint** and **Oxfmt**) for high-performance code quality and formatting, alongside automatic pre-commit hooks.
 
 ### Pre-commit Hooks
 
-We use a Husky npm package to setup precommit hooks for both the FE and the BE.
+We use a Husky npm package to set up the repo's pre-commit hook. It lints and formats staged frontend files.
+
+The active hook is `.husky/pre-commit` (`core.hooksPath` points at `.husky/_`), and it reads its
+per-glob commands from the `lint-staged` key in `package.json`. Two other files look like they
+configure it but do not: `.vite-hooks/pre-commit` and the `staged` block in `vite.config.mjs` belong
+to Vite+'s own hook runner, which this repo does not select. Edit `.husky/pre-commit` and
+`package.json`, not those.
 
 To get the auto-linting for staged files, you need to have run `vp install` in `./frontend` at least once. Ideally, you would not then need to run any formatting or lint commands as it will be done for you. In case you want to manually run them, you still can.
 
