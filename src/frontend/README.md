@@ -89,12 +89,15 @@ The frontend project uses **Vite+** integrated tools (**Oxlint** and **Oxfmt**) 
 ### Pre-commit Hooks
 
 We use a Husky npm package to set up the repo's pre-commit hook. It lints and formats staged frontend files and runs rustfmt on staged .rs files.
+The frontend step requires `node` on `PATH` (the local `vp` shim execs it); if it is missing the hook stops with an explicit error. Staged-Rust-only and conflict-marker commits do not need node.
 
 The active hook is `.husky/pre-commit` (`core.hooksPath` points at `.husky/_`), and its frontend step reads per-glob commands from the `lint-staged` key in `package.json`. Edit those two files. Vite+'s own `vp staged` runner is deliberately **not** used: husky's installer rewrites `core.hooksPath` on every `pnpm install`, so the two cannot coexist, and `.husky/pre-commit` also carries a merge-conflict-marker check that a `staged` glob map cannot express.
 
 For Rust files, the hook runs `rustfmt --edition 2021 --config skip_children=true` on staged `.rs` files. Fully staged files are auto-formatted and re-added; partially staged files (where the worktree has unstaged edits) are checked as they exist in the index, never rewritten, and will block the commit with "Run: cargo fmt --all" if unformatted. If `rustfmt` is not on `PATH`, the Rust block is skipped.
 
 Hooks are installed automatically by the `prepare` script when you run `pnpm install` in `src/frontend`. Ideally, you would not then need to run any formatting or lint commands as it will be done for you. In case you want to manually run them, you still can.
+
+**`core.hooksPath` is not configurable here.** The `prepare` script runs husky's installer, which sets `core.hooksPath` to `src/frontend/.husky/_` unconditionally — it never checks the current value. If you point `core.hooksPath` somewhere else, the next `pnpm install` in `src/frontend` silently puts it back, with no warning. This is deliberate: it keeps `.husky/pre-commit` the single authoritative hook. To disable hooks for one command use `git commit --no-verify`, or set `HUSKY=0` to skip the install step (`index.js` returns early on `HUSKY=0`).
 
 ### Code Formatting
 
@@ -165,6 +168,12 @@ lazy one. Fix by splitting the eager exports into their own files, as `chat/` do
 `ChatMessageWidget.tsx`, `ChatLoadingWidget.tsx` and `ChatStatusWidget.tsx`. Once split, keep the
 lazy widget out of the barrel: `chat/index.ts` deliberately does not re-export `ChatWidget`.
 
+**3. Through a third-party barrel read as a record.** Reading a third-party barrel's exports object
+(like `icons` from `lucide-react`) prevents tree-shaking because the object access forces retention
+of all exports. Fix by extracting the dynamic lookup into its own module and loading it with
+`lazyWithRetry`, as `LucideIcon.tsx` does for the `icons` record. Named imports from the same package
+are free and can stay eager - `import { Folder } from "lucide-react"` tree-shakes correctly.
+
 Type-only references are free, in either direction. A `type` does not exist at runtime, so it creates
 no edge, which is why `ChatWidget.tsx` may safely import `ChatMessageWidgetProps` from the file it was
 split out of. Write it as `import type { ... }`: a plain `import` of a type-only binding is erased too
@@ -177,18 +186,17 @@ in fact does - `ChatWidget.tsx` imports `Button` and `ChatInput` that way.
 
 ### How to check
 
-**Do not rely on the build failing.** `vite.config.mjs` has a `fail-on-ineffective-dynamic-import`
-plugin that collects Rolldown's `INEFFECTIVE_DYNAMIC_IMPORT` warnings and fails the build if any
-arrive. It is a good guard to keep, but on the pinned `vite-plus` (0.2.7) that warning is not emitted:
-a deliberately broken tree builds with **exit 0** and the gate never fires. Older toolchains did print
-it, so treat the gate as protection for a future upgrade, not as today's check.
+**The build will fail.** `vite.config.mjs` has an `assert-lazy-chunks` plugin that reads the module
+graph in `generateBundle` and fails the build if any first-party dynamically imported module lands in
+a chunk that is also statically imported (exit 1, with the source file and chunk name reported). This
+replaces an earlier plugin that promoted Rolldown's `INEFFECTIVE_DYNAMIC_IMPORT` warning: that warning
+is never emitted on `vite-plus` 0.2.7, so the old gate was silent while both known bug shapes built
+with exit 0. Reading the module graph works on the pinned version.
 
-Chunk size is not a signal either. The defeated chunk is still emitted at close to its normal size
-(13,952 bytes vs 13,925 correct), so the "69-byte facade" symptom described in older notes no longer
-appears.
+Chunk size is not a signal. The defeated chunk is still emitted at close to its normal size (13,952
+bytes vs 13,925 correct), so the "69-byte facade" symptom described in older notes no longer appears.
 
-What does work is asking whether the entry statically imports the widget's chunk. After `pnpm run
-build`:
+To manually confirm a specific widget is lazy after `pnpm run build`:
 
 ```bash
 cd src/frontend
@@ -215,6 +223,14 @@ without a build, though only for the barrel it names.
 `@/widgets/rowAction` (used by `tree/TreeItem.tsx` and `dataTables/`). Six of the 27 top-level barrels
 have no importer at all, so they cannot defeat anything no matter what they re-export. There is no
 need to pre-emptively narrow them.
+
+A barrel whose only runtime export is the lazy widget itself (plus `export type` declarations) is
+harmless while nothing imports it, but rewriting the `import()` to name the concrete module alone
+does not protect it - the barrel's own `export { Widget }` re-export becomes the static edge once
+an eager importer appears. Both halves must be applied: narrow the barrel and point the dynamic
+import at the concrete module. Four barrels (`calendar/`, `kanban/`, `tree/`, `layouts/sidebar/`)
+currently re-export a lazy widget but have zero production importers and remain intentionally
+untouched.
 
 ## Testing
 
