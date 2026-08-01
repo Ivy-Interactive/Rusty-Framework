@@ -152,6 +152,56 @@ impl Runtime {
         self.dirty_views.insert(view_id);
     }
 
+    /// Drain every queued event and rebuild request, then rebuild once if
+    /// anything was drained. Returns `true` when a rebuild happened.
+    ///
+    /// This is the non-blocking counterpart to `run()`, for callers that hold the
+    /// `Runtime` behind a lock (the WebSocket handler) and so cannot hand it over
+    /// to a dedicated event-loop task. Draining loops until both channels are
+    /// empty so that a handler which itself queues a rebuild is picked up in the
+    /// same pass.
+    pub async fn process_pending(&mut self) -> bool {
+        let mut drained = false;
+
+        loop {
+            let mut progressed = false;
+
+            while let Ok(msg) = self.event_rx.try_recv() {
+                progressed = true;
+                match msg {
+                    RuntimeMessage::Event {
+                        widget_id,
+                        event_name,
+                        args,
+                    } => {
+                        let registry = self.event_registry.read().await;
+                        registry.dispatch(&widget_id, &event_name, args);
+                    }
+                    RuntimeMessage::Rebuild { view_id } => {
+                        self.dirty_views.insert(view_id);
+                    }
+                    RuntimeMessage::Shutdown => {}
+                }
+            }
+
+            while let Ok(view_id) = self.rebuild_rx.try_recv() {
+                progressed = true;
+                self.dirty_views.insert(view_id);
+            }
+
+            if !progressed {
+                break;
+            }
+            drained = true;
+        }
+
+        if drained {
+            let _ = self.build().await;
+        }
+
+        drained
+    }
+
     /// Run the event loop, processing messages until shutdown.
     pub async fn run(&mut self) {
         // Initial build
@@ -540,6 +590,122 @@ mod tests {
             "Expected child to read parent context, got: {}",
             json
         );
+    }
+
+    #[tokio::test]
+    async fn test_process_pending_dispatches_event_and_rebuilds() {
+        let clicked = Arc::new(AtomicBool::new(false));
+
+        struct CountingClickView {
+            clicked: Arc<AtomicBool>,
+            build_count: Arc<std::sync::atomic::AtomicUsize>,
+        }
+
+        impl View for CountingClickView {
+            fn build(&self, _ctx: &mut BuildContext) -> Element {
+                self.build_count
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let clicked = self.clicked.clone();
+                Button::new("Click")
+                    .on_click(move || {
+                        clicked.store(true, Ordering::SeqCst);
+                    })
+                    .into()
+            }
+        }
+
+        let build_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut runtime = Runtime::new(CountingClickView {
+            clicked: clicked.clone(),
+            build_count: build_count.clone(),
+        });
+
+        runtime.build().await;
+        assert_eq!(build_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        runtime
+            .event_sender()
+            .send(RuntimeMessage::Event {
+                widget_id: "w-0".to_string(),
+                event_name: "click".to_string(),
+                args: serde_json::Value::Null,
+            })
+            .await
+            .unwrap();
+
+        assert!(runtime.process_pending().await);
+        assert!(clicked.load(Ordering::SeqCst), "handler should have fired");
+        assert_eq!(
+            build_count.load(std::sync::atomic::Ordering::SeqCst),
+            2,
+            "process_pending should rebuild once after draining"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_process_pending_no_messages_skips_rebuild() {
+        let build_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        struct CountingView {
+            build_count: Arc<std::sync::atomic::AtomicUsize>,
+        }
+
+        impl View for CountingView {
+            fn build(&self, _ctx: &mut BuildContext) -> Element {
+                self.build_count
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Element::Widget(Box::new(TextBlock::new("idle")))
+            }
+        }
+
+        let mut runtime = Runtime::new(CountingView {
+            build_count: build_count.clone(),
+        });
+        runtime.build().await;
+        assert_eq!(build_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        assert!(!runtime.process_pending().await);
+        assert_eq!(
+            build_count.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "no rebuild when both channels are empty"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_process_pending_picks_up_state_set_from_spawned_task() {
+        use crate::hooks::use_state::use_state;
+
+        struct AsyncStateView;
+
+        impl View for AsyncStateView {
+            fn build(&self, ctx: &mut BuildContext) -> Element {
+                let value = use_state(ctx, "initial".to_string());
+                let current = value.get();
+                if current == "initial" {
+                    let setter = value.clone();
+                    tokio::spawn(async move {
+                        setter.set("from task".to_string());
+                    });
+                }
+                Element::Widget(Box::new(TextBlock::new(&current)))
+            }
+        }
+
+        let mut runtime = Runtime::new(AsyncStateView);
+        runtime.build().await;
+
+        // Let the spawned task run so its State::set reaches rebuild_rx.
+        for _ in 0..5 {
+            tokio::task::yield_now().await;
+        }
+
+        assert!(
+            runtime.process_pending().await,
+            "the spawned task's State::set should trigger a rebuild"
+        );
+        let json = runtime.current_tree().await.unwrap().to_string();
+        assert!(json.contains("from task"), "got: {}", json);
     }
 
     #[test]

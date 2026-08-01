@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use uuid::Uuid;
 
 use crate::core::runtime::RuntimeMessage;
@@ -172,6 +173,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     }
     let event_tx = session_arc.read().await.runtime.event_sender();
 
+    // Poll for rebuilds triggered outside the request path (async hooks resolving,
+    // spawned tasks calling State::set). The rebuild channel lives inside the
+    // Runtime, so a notification-based push would mean exposing it; 50 ms is
+    // imperceptible to a user.
+    let mut push_ticker = tokio::time::interval(Duration::from_millis(50));
+
     // Process incoming messages using this session's isolated runtime
     loop {
         tokio::select! {
@@ -193,8 +200,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         })
                                         .await;
 
-                                    // After event, get updated tree from this session's runtime
+                                    // Dispatch the queued event and rebuild before reading the
+                                    // tree — nothing else drains the runtime's channels.
                                     let mut session = session_arc.write().await;
+                                    session.runtime.process_pending().await;
                                     if let Some(tree) = session.runtime.current_tree().await {
                                         if let Some(patches) = session.reconciler.reconcile(&tree) {
                                             if !patches.is_empty() {
@@ -214,6 +223,21 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     }
                     Some(Ok(_)) => {} // Ignore non-text messages
                     _ => break, // Connection closed or error
+                }
+            }
+            _ = push_ticker.tick() => {
+                let mut session = session_arc.write().await;
+                if session.runtime.process_pending().await {
+                    if let Some(tree) = session.runtime.current_tree().await {
+                        if let Some(patches) = session.reconciler.reconcile(&tree) {
+                            if !patches.is_empty() {
+                                let msg = ServerMessage::Update { patches };
+                                if let Ok(json) = serde_json::to_string(&msg) {
+                                    let _ = sender.send(Message::Text(json.into())).await;
+                                }
+                            }
+                        }
+                    }
                 }
             }
             _ = shutdown_rx.recv() => {
