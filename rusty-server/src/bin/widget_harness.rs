@@ -1,7 +1,10 @@
 use clap::Parser;
 use rusty::prelude::*;
+use rusty::widgets::badge::BadgeVariant;
 use rusty::widgets::button::ButtonVariant;
 use rusty::widgets::input::SelectOption;
+use rusty::widgets::table::Column;
+use serde_json::json;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -890,6 +893,133 @@ impl View for RichTextInputApp {
     }
 }
 
+struct BadgeApp;
+
+impl View for BadgeApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Badge Test"))
+            .child(Badge::new("Default").variant(BadgeVariant::Default))
+            .child(Badge::new("Outline").variant(BadgeVariant::Outline))
+            .child(Badge::new("Dot").variant(BadgeVariant::Dot))
+            .child(Badge::new("Success").color(Color::Named(NamedColor::Success)))
+            .child(Badge::new("Warning").color(Color::Named(NamedColor::Warning)))
+            .child(Badge::new("Danger").color(Color::Named(NamedColor::Danger)))
+            .into()
+    }
+}
+
+struct ProgressApp;
+
+impl View for ProgressApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        // 0.25 steps are exactly representable in binary floating point, so the
+        // readout stays free of 0.30000000000000004-style noise.
+        let value = use_state(ctx, 0.0f64);
+        let value_display = value.get();
+        let value_clone = value.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Progress Test"))
+            .child(Progress::new(0.25))
+            .child(Progress::new(0.75).label("Upload progress"))
+            .child(Progress::indeterminate())
+            .child(Progress::new(50.0).max(200.0))
+            .child(Progress::new(value_display).label("Advancing"))
+            .child(Button::new("Advance").on_click(move || {
+                value_clone.update(|v| (v + 0.25).min(1.0));
+            }))
+            .child(TextBlock::paragraph(&format!("Value: {}", value_display)))
+            .into()
+    }
+}
+
+struct TableApp;
+
+impl View for TableApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        let columns = vec![
+            Column {
+                key: "name".into(),
+                label: "Name".into(),
+                sortable: true,
+            },
+            Column {
+                key: "role".into(),
+                label: "Role".into(),
+                sortable: false,
+            },
+            Column {
+                key: "age".into(),
+                label: "Age".into(),
+                sortable: true,
+            },
+        ];
+
+        let rows = vec![
+            json!({ "name": "Ada", "role": "Engineer", "age": 36 }),
+            json!({ "name": "Grace", "role": "Admiral", "age": 45 }),
+            json!({ "name": "Alan", "role": "Researcher", "age": 41 }),
+        ];
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Table Test"))
+            .child(Table::new(columns.clone()).rows(rows.clone()))
+            .child(Table::new(columns).rows(rows).sort_by("name", true))
+            .into()
+    }
+}
+
+struct DialogApp;
+
+impl View for DialogApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let open = use_state(ctx, false);
+        let open_val = open.get();
+        let open_clone = open.clone();
+        let close_clone = open.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Dialog Test"))
+            .child(Button::new("Open dialog").on_click(move || {
+                open_clone.set(true);
+            }))
+            .child(
+                Dialog::new(open_val)
+                    .title("Confirm action")
+                    .child(TextBlock::paragraph("Are you sure about this?"))
+                    .footer(vec![Button::new("Close")
+                        .variant(ButtonVariant::Secondary)
+                        .on_click(move || {
+                            close_clone.set(false);
+                        })
+                        .into()]),
+            )
+            .child(TextBlock::paragraph(&format!("Open: {}", open_val)))
+            .into()
+    }
+}
+
+struct TooltipApp;
+
+impl View for TooltipApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Tooltip Test"))
+            .child(Tooltip::new("Buttons do things", Button::new("Hover me")))
+            .child(Tooltip::new(
+                "Text can be explained too",
+                TextBlock::paragraph("Hover this text"),
+            ))
+            .into()
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
@@ -933,6 +1063,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "color_input" => RustyServer::new(port, || ColorInputApp),
         "radio_group" => RustyServer::new(port, || RadioGroupApp),
         "multi_select" => RustyServer::new(port, || MultiSelectApp),
+        "badge" => RustyServer::new(port, || BadgeApp),
+        "progress" => RustyServer::new(port, || ProgressApp),
+        "table" => RustyServer::new(port, || TableApp),
+        "dialog" => RustyServer::new(port, || DialogApp),
+        "tooltip" => RustyServer::new(port, || TooltipApp),
         other => {
             eprintln!("Unknown widget: {}", other);
             eprintln!(
@@ -941,7 +1076,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                  activity_heatmap, terminal, rich_text_input, spacer, separator, \
                  layout_sizing, container, icon, image, avatar, callout, skeleton, \
                  expandable, list, text_area, slider, date_input, color_input, \
-                 radio_group, multi_select"
+                 radio_group, multi_select, badge, progress, table, dialog, tooltip"
             );
             std::process::exit(1);
         }
