@@ -51,6 +51,13 @@ install https://github.com/apps/renovate or delete `renovate.json`. Do not
 leave it as decoration — `Ivy-Web/.github/renovate.json` has sat inert since a
 2024-03 `create-turbo` scaffold and has never opened a single PR. To check what `renovate.json` would actually do, see "Probing renovate.json" under `## CI` - the dry-run needs `GITHUB_COM_TOKEN` or it silently reports no GitHub Actions updates.
 
+
+To verify which version is actually linked in `node_modules` (not a globally
+installed `vp`):
+
+```sh
+cd src/frontend && pnpm exec vp --version
+```
 Beyond the vite-plus trio, `renovate.json` groups the remaining 117 npm entries
 (86 dependencies + 21 devDependencies + 10 pnpm.overrides in `src/frontend/package.json`,
 plus 1 devDependency in `e2e/package.json`) into a single weekly PR on Mondays.
