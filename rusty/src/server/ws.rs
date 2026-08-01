@@ -458,8 +458,8 @@ mod tests {
             }
         });
 
-        let started = tokio::time::Instant::now();
-        while started.elapsed() < std::time::Duration::from_millis(200) {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(200);
+        loop {
             tokio::select! {
                 _ = notify.notified(), if !push_pending => {
                     push_pending = true;
@@ -469,6 +469,9 @@ mod tests {
                     push_pending = false;
                     next_push = tokio::time::Instant::now() + MIN_PUSH_INTERVAL;
                     drains += 1;
+                }
+                _ = tokio::time::sleep_until(deadline) => {
+                    break;
                 }
             }
         }
