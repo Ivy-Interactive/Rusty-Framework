@@ -8,6 +8,7 @@ pub mod use_interval;
 pub mod use_memo;
 pub mod use_reducer;
 pub mod use_ref;
+pub mod use_service;
 pub mod use_state;
 
 pub use deps::{deps_changed, DynEq};
@@ -19,4 +20,5 @@ pub use use_interval::use_interval;
 pub use use_memo::use_memo;
 pub use use_reducer::use_reducer;
 pub use use_ref::{use_ref, Ref};
+pub use use_service::{try_use_service, use_service};
 pub use use_state::{use_state, State};
