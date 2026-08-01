@@ -21,7 +21,7 @@ pub use deps::{deps_changed, DynEq};
 pub use use_alert::{use_alert, AlertCallback, ShowAlert};
 pub use use_callback::use_callback;
 pub use use_context::{create_context, use_context};
-pub use use_download::{use_download, use_download_bytes};
+pub use use_download::{use_download, use_download_bytes, use_download_stream};
 pub use use_effect::{use_effect, use_effect_with_deps};
 pub use use_form::use_form;
 pub use use_interval::use_interval;

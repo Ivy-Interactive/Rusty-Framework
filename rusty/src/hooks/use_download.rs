@@ -1,10 +1,13 @@
 use std::future::Future;
 use std::sync::Arc;
 
+use bytes::Bytes;
+use futures::Stream;
+
 use crate::core::query_cache::QueryError;
 use crate::hooks::use_effect::use_effect;
 use crate::hooks::use_state::{use_state, State};
-use crate::server::download::{download_factory, DownloadService};
+use crate::server::download::{download_factory, stream_download_factory, DownloadService};
 use crate::views::view::BuildContext;
 
 /// Register a download and get back the URL to serve it from.
@@ -17,8 +20,8 @@ use crate::views::view::BuildContext;
 /// offering a download costs nothing until it is taken. The registration is
 /// released in the effect cleanup, which the runtime runs on unmount.
 ///
-/// Ivy's `Stream` overload is out of scope: Rusty has no streaming-body plumbing,
-/// so the bytes are produced whole.
+/// This hook buffers the entire response in memory. For large files, use
+/// [`use_download_stream`] to stream the content instead.
 pub fn use_download<F, Fut>(
     ctx: &mut BuildContext,
     factory: F,
@@ -71,6 +74,49 @@ pub fn use_download_bytes(
         mime_type,
         file_name,
     )
+}
+
+/// Register a streaming download and get back the URL to serve it from.
+///
+/// Like [`use_download`] but for large files that should be streamed to the
+/// client instead of buffered in memory. The factory returns a stream of chunks,
+/// and the response is sent with `transfer-encoding: chunked`.
+///
+/// If a chunk fails mid-stream, the connection aborts and the browser sees a
+/// partial download — the HTTP status cannot change after headers are sent.
+pub fn use_download_stream<F, Fut, S>(
+    ctx: &mut BuildContext,
+    factory: F,
+    mime_type: impl Into<String>,
+    file_name: impl Into<String>,
+) -> State<Option<String>>
+where
+    F: Fn() -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<S, QueryError>> + Send + 'static,
+    S: Stream<Item = Result<Bytes, QueryError>> + Send + 'static,
+{
+    let url_state = use_state(ctx, None::<String>);
+    let service = ctx
+        .services()
+        .get::<DownloadService>()
+        .expect("use_download_stream requires a DownloadService on the ServiceRegistry");
+
+    let mime_type = mime_type.into();
+    let file_name = file_name.into();
+    let effect_state = url_state.clone();
+
+    use_effect(ctx, move || {
+        let (handle, url) =
+            service.add_stream_download(stream_download_factory(factory), mime_type, file_name);
+        effect_state.set(Some(url));
+
+        // Dropping the handle unregisters the download.
+        Some(Box::new(move || {
+            drop(handle);
+        }) as Box<dyn FnOnce() + Send + Sync>)
+    });
+
+    url_state
 }
 
 #[cfg(test)]
@@ -136,9 +182,12 @@ mod tests {
 
         let url = state.get().unwrap();
         let download_id = Uuid::parse_str(url.rsplit('/').next().unwrap()).unwrap();
-        let response = download_service.take_bytes(download_id).await.unwrap();
+        let response = download_service.take(download_id).await.unwrap();
 
-        assert_eq!(response.bytes, b"id,name\n1,alice".to_vec());
+        assert_eq!(
+            response.payload.collect().await.unwrap(),
+            b"id,name\n1,alice".to_vec()
+        );
         assert_eq!(response.mime_type, "text/csv");
         assert_eq!(response.file_name, "export.csv");
     }
@@ -158,7 +207,7 @@ mod tests {
             cleanup();
         }
         assert_eq!(download_service.len(), 0);
-        assert!(download_service.take_bytes(download_id).await.is_none());
+        assert!(download_service.take(download_id).await.is_none());
     }
 
     #[tokio::test]
@@ -207,8 +256,11 @@ mod tests {
 
         let url = state.get().unwrap();
         let download_id = Uuid::parse_str(url.rsplit('/').next().unwrap()).unwrap();
-        let response = download_service.take_bytes(download_id).await.unwrap();
-        assert_eq!(response.bytes, b"generated".to_vec());
+        let response = download_service.take(download_id).await.unwrap();
+        assert_eq!(
+            response.payload.collect().await.unwrap(),
+            b"generated".to_vec()
+        );
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
@@ -218,5 +270,71 @@ mod tests {
         let mut store = HookStore::new();
         let mut ctx = BuildContext::new(&mut store, None);
         let _ = use_download_bytes(&mut ctx, vec![], "text/plain", "x.txt");
+    }
+
+    #[tokio::test]
+    async fn test_use_download_stream_registers_a_streaming_download() {
+        let (services, download_service) = test_services();
+        let mut store = HookStore::new();
+
+        let (state, effects) = {
+            let mut ctx = BuildContext::with_services(
+                &mut store,
+                None,
+                uuid::Uuid::nil(),
+                Arc::clone(&services),
+            );
+            let state = use_download_stream(
+                &mut ctx,
+                || async {
+                    Ok(futures::stream::iter(vec![
+                        Ok(bytes::Bytes::from("part-1")),
+                        Ok(bytes::Bytes::from("part-2")),
+                    ]))
+                },
+                "text/plain",
+                "stream.txt",
+            );
+            (state, ctx.drain_effects())
+        };
+
+        let mut cleanups = Vec::new();
+        for effect in effects {
+            if let Some(cleanup) = (effect.callback)() {
+                cleanups.push(cleanup);
+            }
+        }
+
+        let url = state.get().expect("the effect should have set the url");
+        assert!(
+            url.starts_with("/rusty/download/conn-1/"),
+            "unexpected url: {url}"
+        );
+
+        let download_id = Uuid::parse_str(url.rsplit('/').next().unwrap()).unwrap();
+        let response = download_service.take(download_id).await.unwrap();
+        assert_eq!(
+            response.payload.collect().await.unwrap(),
+            b"part-1part-2".to_vec()
+        );
+
+        // Unmount.
+        for cleanup in cleanups {
+            cleanup();
+        }
+        assert_eq!(download_service.len(), 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "use_download_stream requires a DownloadService")]
+    fn test_missing_download_service_panics_for_the_stream_hook() {
+        let mut store = HookStore::new();
+        let mut ctx = BuildContext::new(&mut store, None);
+        let _ = use_download_stream(
+            &mut ctx,
+            || async { Ok(futures::stream::empty::<Result<bytes::Bytes, QueryError>>()) },
+            "text/plain",
+            "x.txt",
+        );
     }
 }
