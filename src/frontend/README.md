@@ -88,7 +88,7 @@ The frontend project uses **Vite+** integrated tools (**Oxlint** and **Oxfmt**) 
 
 ### Pre-commit Hooks
 
-We use a Husky npm package to set up the repo's pre-commit hook. It lints and formats staged frontend files.
+We use a Husky npm package to set up the repo's pre-commit hook. It lints and formats staged frontend files and runs rustfmt on staged .rs files.
 
 The active hook is `.husky/pre-commit` (`core.hooksPath` points at `.husky/_`), and it reads its
 per-glob commands from the `lint-staged` key in `package.json`. Two other files look like they
