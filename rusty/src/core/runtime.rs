@@ -44,7 +44,7 @@ impl Runtime {
 
     /// Build a runtime whose views can resolve the given services via `use_service`.
     pub fn with_services(root: impl View, services: Arc<ServiceRegistry>) -> Self {
-    /// Create a runtime whose views can resolve the given server-level services.
+        let (event_tx, event_rx) = mpsc::channel(2048);
         let (rebuild_tx, rebuild_rx) = mpsc::channel(256);
         let view_tree = ViewTree::new(Arc::new(root));
         Runtime {
@@ -97,14 +97,14 @@ impl Runtime {
             let store = self.hook_stores.entry(view_id).or_default();
             let rebuild_tx = self.rebuild_tx.clone();
 
-            let mut ctx = BuildContext::with_view_id(store, Some(rebuild_tx), view_id)
-                .with_services(services);
+            let mut ctx = BuildContext::with_services(store, Some(rebuild_tx), view_id, services);
             ctx.reset();
 
             // Clone the Arc<dyn View> so we can borrow view immutably while
             // store is borrowed mutably — no raw pointer needed.
             let view_clone = self
-            let mut ctx = BuildContext::with_services(store, Some(rebuild_tx), view_id, services);
+                .view_tree
+                .get(&view_id)
                 .expect("view_id not in tree")
                 .view
                 .clone();

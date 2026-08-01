@@ -103,7 +103,7 @@ mod tests {
         let received = Arc::new(Mutex::new(Vec::<String>::new()));
         let subscription = {
             let mut ctx =
-                BuildContext::new(&mut receiver_store, None).with_services(Arc::clone(&services));
+                BuildContext::new(&mut receiver_store, None).using_services(Arc::clone(&services));
             let signal = use_signal::<String, ()>(&mut ctx, "refresh", SignalScope::Session);
             let receiver_id = use_receiver_id(&mut ctx);
             let received = received.clone();
@@ -115,7 +115,7 @@ mod tests {
         // The sending view gets the same signal by name.
         {
             let mut ctx =
-                BuildContext::new(&mut sender_store, None).with_services(Arc::clone(&services));
+                BuildContext::new(&mut sender_store, None).using_services(Arc::clone(&services));
             let signal = use_signal::<String, ()>(&mut ctx, "refresh", SignalScope::Session);
             signal.send("go".to_string());
         }
@@ -130,7 +130,7 @@ mod tests {
         let mut store = HookStore::new();
 
         {
-            let mut ctx = BuildContext::new(&mut store, None).with_services(Arc::clone(&services));
+            let mut ctx = BuildContext::new(&mut store, None).using_services(Arc::clone(&services));
             let _session_signal = use_signal::<i32, i32>(&mut ctx, "ping", SignalScope::Session);
             let _server_signal = use_signal::<i32, i32>(&mut ctx, "ping", SignalScope::Server);
         }
@@ -164,7 +164,7 @@ mod tests {
         let mut store_a = HookStore::new();
         let _sub_a = {
             let mut ctx =
-                BuildContext::new(&mut store_a, None).with_services(Arc::clone(&services_a));
+                BuildContext::new(&mut store_a, None).using_services(Arc::clone(&services_a));
             let signal = use_signal::<i32, ()>(&mut ctx, "tick", SignalScope::Session);
             let receiver_id = use_receiver_id(&mut ctx);
             let received_a = received_a.clone();
@@ -177,7 +177,7 @@ mod tests {
         let mut store_b = HookStore::new();
         {
             let mut ctx =
-                BuildContext::new(&mut store_b, None).with_services(Arc::clone(&services_b));
+                BuildContext::new(&mut store_b, None).using_services(Arc::clone(&services_b));
             let signal = use_signal::<i32, ()>(&mut ctx, "tick", SignalScope::Session);
             signal.send(1);
         }
@@ -187,7 +187,7 @@ mod tests {
         let received_server = Arc::new(Mutex::new(0usize));
         let _sub_server = {
             let mut ctx =
-                BuildContext::new(&mut store_a, None).with_services(Arc::clone(&services_a));
+                BuildContext::new(&mut store_a, None).using_services(Arc::clone(&services_a));
             let signal = use_signal::<i32, ()>(&mut ctx, "broadcast", SignalScope::Server);
             let received_server = received_server.clone();
             signal.receive(Uuid::new_v4(), move |_| {
@@ -195,7 +195,7 @@ mod tests {
             })
         };
         {
-            let mut ctx = BuildContext::new(&mut store_b, None).with_services(services_b);
+            let mut ctx = BuildContext::new(&mut store_b, None).using_services(services_b);
             let signal = use_signal::<i32, ()>(&mut ctx, "broadcast", SignalScope::Server);
             signal.send(1);
         }
@@ -208,12 +208,12 @@ mod tests {
         let mut store = HookStore::new();
 
         let first = {
-            let mut ctx = BuildContext::new(&mut store, None).with_services(Arc::clone(&services));
+            let mut ctx = BuildContext::new(&mut store, None).using_services(Arc::clone(&services));
             let _signal = use_signal::<i32, i32>(&mut ctx, "s", SignalScope::Session);
             use_receiver_id(&mut ctx)
         };
         let second = {
-            let mut ctx = BuildContext::new(&mut store, None).with_services(services);
+            let mut ctx = BuildContext::new(&mut store, None).using_services(services);
             let _signal = use_signal::<i32, i32>(&mut ctx, "s", SignalScope::Session);
             use_receiver_id(&mut ctx)
         };

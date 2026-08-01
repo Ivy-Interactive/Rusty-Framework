@@ -48,7 +48,7 @@ mod tests {
         }));
 
         let mut store = HookStore::new();
-        let ctx = BuildContext::new(&mut store, None).with_services(services);
+        let ctx = BuildContext::new(&mut store, None).using_services(services);
 
         let greeter = use_service::<Greeter>(&ctx);
         assert_eq!(greeter.greeting, "hello");
@@ -91,7 +91,7 @@ mod tests {
 
         let mut store = HookStore::new();
         let mut ctx = BuildContext::with_view_id(&mut store, None, uuid::Uuid::new_v4())
-            .with_services(services);
+            .using_services(services);
 
         let (_element, _child_id, _child_store) = ctx.child_view(ChildView, None);
         assert_eq!(CHILD_SAW.lock().unwrap().take().unwrap(), "from parent");

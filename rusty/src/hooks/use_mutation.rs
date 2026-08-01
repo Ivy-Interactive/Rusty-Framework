@@ -92,7 +92,7 @@ mod tests {
         let mut reader_store = HookStore::new();
         {
             let mut ctx =
-                BuildContext::new(&mut reader_store, None).with_services(Arc::clone(&services));
+                BuildContext::new(&mut reader_store, None).using_services(Arc::clone(&services));
             let _: QueryResult<String> = use_query(
                 &mut ctx,
                 Some("todos"),
@@ -106,7 +106,7 @@ mod tests {
         let mut writer_store = HookStore::new();
         let mutator: QueryMutator<String> = {
             let ctx =
-                BuildContext::new(&mut writer_store, None).with_services(Arc::clone(&services));
+                BuildContext::new(&mut writer_store, None).using_services(Arc::clone(&services));
             use_mutation(&ctx, "todos", options.clone())
         };
         mutator.mutate(Some("written".to_string()), false);
@@ -114,7 +114,7 @@ mod tests {
         // The reader sees the new value on its next build.
         let reader_result: QueryResult<String> = {
             let mut ctx =
-                BuildContext::new(&mut reader_store, None).with_services(Arc::clone(&services));
+                BuildContext::new(&mut reader_store, None).using_services(Arc::clone(&services));
             use_query(
                 &mut ctx,
                 Some("todos"),
@@ -139,7 +139,7 @@ mod tests {
         let mut reader_store = HookStore::new();
         {
             let mut ctx =
-                BuildContext::new(&mut reader_store, None).with_services(Arc::clone(&services));
+                BuildContext::new(&mut reader_store, None).using_services(Arc::clone(&services));
             let _: QueryResult<String> = use_query(
                 &mut ctx,
                 Some("cart"),
@@ -152,7 +152,7 @@ mod tests {
         let mut writer_store = HookStore::new();
         let mutator: QueryMutator<String> = {
             let ctx =
-                BuildContext::new(&mut writer_store, None).with_services(Arc::clone(&services));
+                BuildContext::new(&mut writer_store, None).using_services(Arc::clone(&services));
             use_mutation(&ctx, "cart", options)
         };
         mutator.invalidate();
@@ -175,7 +175,7 @@ mod tests {
     fn test_use_mutation_panics_for_view_scope() {
         let services = test_services("conn-1");
         let mut store = HookStore::new();
-        let ctx = BuildContext::new(&mut store, None).with_services(services);
+        let ctx = BuildContext::new(&mut store, None).using_services(services);
         let _: QueryMutator<String> =
             use_mutation(&ctx, "k", QueryOptions::default().scope(QueryScope::View));
     }
