@@ -1,0 +1,5 @@
+error: `items: Vec<Element>` is a container field the derive cannot see, so its descendants never get IDs or event handlers. Rename it to `children`, or hand-write `children_mut` instead of deriving it.
+  --> tests/ui/derive_misnamed_container.rs:12:5
+   |
+12 |     items: Vec<Element>,
+   |     ^^^^^

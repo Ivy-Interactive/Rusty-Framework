@@ -1,0 +1,5 @@
+error: `count.set()` runs synchronously during `build`, and `count` came from a rebuild-triggering hook — this requests a rebuild of the view that is currently building, i.e. an unconditional rebuild loop. Move the call into an event handler or an effect, or use `use_ref` if the value should not trigger rebuilds. Silence this rule for the whole impl block with `#[rusty::view(allow(set_during_build))]`.
+  --> tests/ui/set_during_build.rs:10:15
+   |
+10 |         count.set(1);
+   |               ^^^
