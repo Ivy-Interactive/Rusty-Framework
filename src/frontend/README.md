@@ -96,6 +96,8 @@ For Rust files, the hook runs `rustfmt --edition 2021 --config skip_children=tru
 
 Hooks are installed automatically by the `prepare` script when you run `pnpm install` in `src/frontend`. Ideally, you would not then need to run any formatting or lint commands as it will be done for you. In case you want to manually run them, you still can.
 
+**`core.hooksPath` is not configurable here.** The `prepare` script runs husky's installer, which sets `core.hooksPath` to `src/frontend/.husky/_` unconditionally — it never checks the current value. If you point `core.hooksPath` somewhere else, the next `pnpm install` in `src/frontend` silently puts it back, with no warning. This is deliberate: it keeps `.husky/pre-commit` the single authoritative hook. To disable hooks for one command use `git commit --no-verify`, or set `HUSKY=0` to skip the install step (`index.js` returns early on `HUSKY=0`).
+
 ### Code Formatting
 
 Format all files with Oxfmt using the Vite+ CLI:
@@ -177,18 +179,17 @@ in fact does - `ChatWidget.tsx` imports `Button` and `ChatInput` that way.
 
 ### How to check
 
-**Do not rely on the build failing.** `vite.config.mjs` has a `fail-on-ineffective-dynamic-import`
-plugin that collects Rolldown's `INEFFECTIVE_DYNAMIC_IMPORT` warnings and fails the build if any
-arrive. It is a good guard to keep, but on the pinned `vite-plus` (0.2.7) that warning is not emitted:
-a deliberately broken tree builds with **exit 0** and the gate never fires. Older toolchains did print
-it, so treat the gate as protection for a future upgrade, not as today's check.
+**The build will fail.** `vite.config.mjs` has an `assert-lazy-chunks` plugin that reads the module
+graph in `generateBundle` and fails the build if any first-party dynamically imported module lands in
+a chunk that is also statically imported (exit 1, with the source file and chunk name reported). This
+replaces an earlier plugin that promoted Rolldown's `INEFFECTIVE_DYNAMIC_IMPORT` warning: that warning
+is never emitted on `vite-plus` 0.2.7, so the old gate was silent while both known bug shapes built
+with exit 0. Reading the module graph works on the pinned version.
 
-Chunk size is not a signal either. The defeated chunk is still emitted at close to its normal size
-(13,952 bytes vs 13,925 correct), so the "69-byte facade" symptom described in older notes no longer
-appears.
+Chunk size is not a signal. The defeated chunk is still emitted at close to its normal size (13,952
+bytes vs 13,925 correct), so the "69-byte facade" symptom described in older notes no longer appears.
 
-What does work is asking whether the entry statically imports the widget's chunk. After `pnpm run
-build`:
+To manually confirm a specific widget is lazy after `pnpm run build`:
 
 ```bash
 cd src/frontend
