@@ -182,10 +182,11 @@ in fact does - `ChatWidget.tsx` imports `Button` and `ChatInput` that way.
 
 **The build will fail.** `vite.config.mjs` has an `assert-lazy-chunks` plugin that reads the module
 graph in `generateBundle` and fails the build if any first-party dynamically imported module lands in
-a chunk that is also statically imported (exit 1, with the source file and chunk name reported). This
-replaces an earlier plugin that promoted Rolldown's `INEFFECTIVE_DYNAMIC_IMPORT` warning: that warning
-is never emitted on `vite-plus` 0.2.7, so the old gate was silent while both known bug shapes built
-with exit 0. Reading the module graph works on the pinned version.
+a chunk that is also statically imported, or if it is merged into the entry chunk (exit 1, with the
+source file and chunk name reported). This replaces an earlier plugin that promoted Rolldown's
+`INEFFECTIVE_DYNAMIC_IMPORT` warning: that warning is never emitted on `vite-plus` 0.2.7, so the old
+gate was silent while both known bug shapes built with exit 0. Reading the module graph works on the
+pinned version.
 
 Chunk size is not a signal. The defeated chunk is still emitted at close to its normal size (13,952
 bytes vs 13,925 correct), so the "69-byte facade" symptom described in older notes no longer appears.
