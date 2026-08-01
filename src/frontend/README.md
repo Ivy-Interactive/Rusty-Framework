@@ -96,6 +96,8 @@ configure it but do not: `.vite-hooks/pre-commit` and the `staged` block in `vit
 to Vite+'s own hook runner, which this repo does not select. Edit `.husky/pre-commit` and
 `package.json`, not those.
 
+For Rust files, the hook runs `rustfmt --edition 2021 --config skip_children=true` on staged `.rs` files. Fully staged files are auto-formatted and re-added; partially staged files (where the worktree has unstaged edits) are checked only and will block the commit if unformatted. If `rustfmt` is not on `PATH`, the Rust block is skipped.
+
 To get the auto-linting for staged files, you need to have run `vp install` in `./frontend` at least once. Ideally, you would not then need to run any formatting or lint commands as it will be done for you. In case you want to manually run them, you still can.
 
 If there are issues that auto-linting and formatting can't resolve automatically, your commit will be blocked from being pushed. If you really need to push, you can specify checks behavior per commit (not recommended):

@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use crate::shared::ViewId;
-use crate::views::view::BuildContext;
+use crate::views::view::{BuildContext, RebuildHandle};
 
 /// Reactive state handle returned by `use_state`.
 ///
@@ -12,7 +12,7 @@ use crate::views::view::BuildContext;
 #[derive(Debug)]
 pub struct State<T: Send + Sync + 'static> {
     inner: Arc<RwLock<T>>,
-    rebuild_tx: Option<tokio::sync::mpsc::Sender<ViewId>>,
+    rebuild_tx: Option<RebuildHandle>,
     /// The ViewId that owns this state, sent with rebuild signals.
     view_id: ViewId,
     /// When true, mutations do NOT trigger rebuilds (used by use_ref).
@@ -20,11 +20,7 @@ pub struct State<T: Send + Sync + 'static> {
 }
 
 impl<T: Send + Sync + Clone + 'static> State<T> {
-    pub(crate) fn new(
-        initial: T,
-        rebuild_tx: Option<tokio::sync::mpsc::Sender<ViewId>>,
-        view_id: ViewId,
-    ) -> Self {
+    pub(crate) fn new(initial: T, rebuild_tx: Option<RebuildHandle>, view_id: ViewId) -> Self {
         State {
             inner: Arc::new(RwLock::new(initial)),
             rebuild_tx,
@@ -71,8 +67,8 @@ impl<T: Send + Sync + Clone + 'static> State<T> {
         if self.silent {
             return;
         }
-        if let Some(ref tx) = self.rebuild_tx {
-            let _ = tx.try_send(self.view_id);
+        if let Some(ref handle) = self.rebuild_tx {
+            handle.request(self.view_id);
         }
     }
 }
@@ -107,6 +103,7 @@ pub fn use_state<T: Send + Sync + Clone + 'static>(ctx: &mut BuildContext, initi
 mod tests {
     use super::*;
     use crate::hooks::hook_store::HookStore;
+    use futures::FutureExt;
 
     #[test]
     fn test_state_get_set() {
@@ -159,13 +156,20 @@ mod tests {
     #[test]
     fn test_state_set_triggers_rebuild() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        let notify = Arc::new(tokio::sync::Notify::new());
+        let handle = RebuildHandle::new(tx, Arc::clone(&notify));
         let mut store = HookStore::new();
         let view_id = uuid::Uuid::new_v4();
-        let mut ctx = BuildContext::with_view_id(&mut store, Some(tx), view_id);
+        let mut ctx = BuildContext::with_view_id(&mut store, Some(handle), view_id);
         let state = use_state(&mut ctx, 0);
 
         state.set(1);
         let received = rx.try_recv().unwrap();
         assert_eq!(received, view_id);
+
+        // Also verify the notify was signalled - a stored permit should be available
+        let notified = notify.notified();
+        tokio::pin!(notified);
+        assert!(notified.as_mut().now_or_never().is_some());
     }
 }
