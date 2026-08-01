@@ -36,7 +36,7 @@ import {
   ResizablePanelWidget,
 } from "@/widgets/layouts/ResizablePanelGroupWidget";
 import { FloatingPanelWidget } from "@/widgets/layouts/FloatingPanelWidget";
-import { ListItemWidget } from "@/widgets/lists";
+import { ListItemWidget } from "@/widgets/lists/ListItemWidget";
 import { TreeWidget } from "@/widgets/tree";
 import { TextBlockWidget } from "@/widgets/primitives/TextBlockWidget";
 import { HtmlWidget } from "@/widgets/primitives/HtmlWidget";
