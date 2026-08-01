@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { getWidth, inputStyles } from "@/lib/styles";
 import { InvalidIcon } from "@/components/InvalidIcon";
 import { useFocusable } from "@/hooks/use-focus-management";
-import { sidebarMenuRef } from "@/widgets/layouts/sidebar";
+import { sidebarMenuRef } from "@/widgets/layouts/sidebar/sidebar-refs";
 import { Densities } from "@/types/density";
 import {
   textInputSizeVariant,

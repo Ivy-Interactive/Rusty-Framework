@@ -2,17 +2,14 @@ import { LoadingScreen } from "@/components/LoadingScreen";
 import { ArticleWidget } from "@/widgets/article";
 import { CardWidget } from "@/widgets/card";
 import { BadgeWidget } from "@/widgets/badge";
-import { DropDownMenuWidget } from "@/widgets/dropDownMenu";
 import { ExpandableWidget } from "@/widgets/expandable";
 import { ProgressWidget } from "@/widgets/progress";
-import { SheetWidget } from "@/widgets/sheet";
 import { SlotWidget } from "@/widgets/slot";
 import { TooltipWidget } from "@/widgets/tooltip";
 import { PaginationWidget } from "@/widgets/pagination";
 import { ChatLoadingWidget, ChatMessageWidget, ChatStatusWidget } from "@/widgets/chat";
 import { ToolbarWidget } from "@/widgets/toolbar";
 import { BreadcrumbsWidget } from "@/widgets/breadcrumbs";
-import { StackedProgressWidget } from "@/widgets/stackedProgress";
 import { FileDialogWidget, SaveDialogWidget, FolderDialogWidget } from "@/widgets/filePicker";
 import { BladeContainerWidget, BladeWidget } from "@/widgets/blades";
 import { DetailsWidget, DetailWidget } from "@/widgets/details";
@@ -23,26 +20,17 @@ import { DialogFooterWidget } from "@/widgets/dialogs/DialogFooterWidget";
 import { FormWidget } from "@/widgets/forms";
 import { FieldWidget } from "@/widgets/inputs/FieldWidget";
 import { TextInputWidget } from "@/widgets/inputs/TextInputWidget";
-import { BoolInputWidget } from "@/widgets/inputs/BoolInputWidget";
-import { NumberInputWidget } from "@/widgets/inputs/NumberInputWidget";
 import { ReadOnlyInputWidget } from "@/widgets/inputs/ReadOnlyInputWidget";
 import { StackLayoutWidget } from "@/widgets/layouts/StackLayoutWidget";
 import { GridLayoutWidget } from "@/widgets/layouts/GridLayoutWidget";
 import { HeaderLayoutWidget } from "@/widgets/layouts/HeaderLayoutWidget";
 import { FooterLayoutWidget } from "@/widgets/layouts/FooterLayoutWidget";
-import { SidebarLayoutWidget, SidebarMenuWidget } from "@/widgets/layouts/sidebar";
-import {
-  ResizablePanelGroupWidget,
-  ResizablePanelWidget,
-} from "@/widgets/layouts/ResizablePanelGroupWidget";
 import { FloatingPanelWidget } from "@/widgets/layouts/FloatingPanelWidget";
 import { ListItemWidget } from "@/widgets/lists/ListItemWidget";
-import { TreeWidget } from "@/widgets/tree";
 import { TextBlockWidget } from "@/widgets/primitives/TextBlockWidget";
 import { HtmlWidget } from "@/widgets/primitives/HtmlWidget";
 import { ErrorWidget } from "@/widgets/primitives/ErrorWidget";
 import { SvgWidget } from "@/widgets/primitives/SvgWidget";
-import { ImageWidget } from "@/widgets/primitives/ImageWidget";
 import { IframeWidget } from "@/widgets/primitives/IframeWidget";
 import { FragmentWidget } from "@/widgets/primitives/FragmentWidget";
 import { SeparatorWidget } from "@/widgets/primitives/SeparatorWidget";
@@ -59,7 +47,6 @@ import { LoadingWidget } from "@/widgets/primitives/LoadingWidget";
 import { AppHostWidget } from "@/widgets/primitives/AppHostWidget";
 import { AutoScrollWidget } from "@/widgets/primitives/AutoScrollWidget";
 import { TableWidget, TableRowWidget, TableCellWidget } from "@/widgets/tables";
-import { SmartSearch } from "@/docs-internal/SmartSearch";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
 
 export const widgetMap = {
@@ -78,7 +65,11 @@ export const widgetMap = {
   "Ivy.Xml": lazyWithRetry(() => import("@/widgets/primitives/XmlWidget")),
   "Ivy.Error": ErrorWidget,
   "Ivy.Svg": SvgWidget,
-  "Ivy.Image": ImageWidget,
+  "Ivy.Image": lazyWithRetry(() =>
+    import("@/widgets/primitives/ImageWidget").then((m) => ({
+      default: m.ImageWidget,
+    })),
+  ),
   "Ivy.Iframe": IframeWidget,
   "Ivy.CodeBlock": lazyWithRetry(() => import("@/widgets/primitives/CodeBlockWidget")),
   "Ivy.Fragment": FragmentWidget,
@@ -118,12 +109,20 @@ export const widgetMap = {
     })),
   ),
   "Ivy.Progress": ProgressWidget,
-  "Ivy.StackedProgress": StackedProgressWidget,
+  "Ivy.StackedProgress": lazyWithRetry(() =>
+    import("@/widgets/stackedProgress/StackedProgressWidget").then((m) => ({
+      default: m.StackedProgressWidget,
+    })),
+  ),
   "Ivy.Tooltip": TooltipWidget,
   "Ivy.Toolbar": ToolbarWidget,
   "Ivy.Slot": SlotWidget,
   "Ivy.Card": CardWidget,
-  "Ivy.Sheet": SheetWidget,
+  "Ivy.Sheet": lazyWithRetry(() =>
+    import("@/widgets/sheet/SheetWidget").then((m) => ({
+      default: m.SheetWidget,
+    })),
+  ),
   "Ivy.Badge": BadgeWidget,
   "Ivy.Breadcrumbs": BreadcrumbsWidget,
   "Ivy.Expandable": ExpandableWidget,
@@ -135,7 +134,11 @@ export const widgetMap = {
   "Ivy.ChatMessage": ChatMessageWidget,
   "Ivy.ChatLoading": ChatLoadingWidget,
   "Ivy.ChatStatus": ChatStatusWidget,
-  "Ivy.DropDownMenu": DropDownMenuWidget,
+  "Ivy.DropDownMenu": lazyWithRetry(() =>
+    import("@/widgets/dropDownMenu/DropDownMenuWidget").then((m) => ({
+      default: m.DropDownMenuWidget,
+    })),
+  ),
   "Ivy.Pagination": PaginationWidget,
   "Ivy.Kanban": lazyWithRetry(() =>
     import("@/widgets/kanban/KanbanWidget").then((m) => ({
@@ -173,22 +176,46 @@ export const widgetMap = {
       default: m.TabWidget,
     })),
   ),
-  "Ivy.SidebarLayout": SidebarLayoutWidget,
-  "Ivy.SidebarMenu": SidebarMenuWidget,
-  "Ivy.ResizablePanelGroup": ResizablePanelGroupWidget,
-  "Ivy.ResizablePanel": ResizablePanelWidget,
+  "Ivy.SidebarLayout": lazyWithRetry(() =>
+    import("@/widgets/layouts/sidebar/SidebarLayoutWidget").then((m) => ({
+      default: m.SidebarLayoutWidget,
+    })),
+  ),
+  "Ivy.SidebarMenu": lazyWithRetry(() =>
+    import("@/widgets/layouts/sidebar/SidebarLayoutWidget").then((m) => ({
+      default: m.SidebarMenuWidget,
+    })),
+  ),
+  "Ivy.ResizablePanelGroup": lazyWithRetry(() =>
+    import("@/widgets/layouts/ResizablePanelGroupWidget").then((m) => ({
+      default: m.ResizablePanelGroupWidget,
+    })),
+  ),
+  "Ivy.ResizablePanel": lazyWithRetry(() =>
+    import("@/widgets/layouts/ResizablePanelGroupWidget").then((m) => ({
+      default: m.ResizablePanelWidget,
+    })),
+  ),
   "Ivy.FloatingPanel": FloatingPanelWidget,
 
   // Inputs
   "Ivy.Field": FieldWidget,
   "Ivy.TextInput": TextInputWidget,
-  "Ivy.BoolInput": BoolInputWidget,
+  "Ivy.BoolInput": lazyWithRetry(() =>
+    import("@/widgets/inputs/BoolInputWidget").then((m) => ({
+      default: m.BoolInputWidget,
+    })),
+  ),
   "Ivy.DateTimeInput": lazyWithRetry(() =>
     import("@/widgets/inputs/DateTimeInputWidget").then((m) => ({
       default: m.DateTimeInputWidget,
     })),
   ),
-  "Ivy.NumberInput": NumberInputWidget,
+  "Ivy.NumberInput": lazyWithRetry(() =>
+    import("@/widgets/inputs/NumberInputWidget").then((m) => ({
+      default: m.NumberInputWidget,
+    })),
+  ),
   "Ivy.NumberRangeInput": lazyWithRetry(() =>
     import("@/widgets/inputs/NumberRangeInputWidget").then((m) => ({
       default: m.NumberRangeInputWidget,
@@ -280,7 +307,11 @@ export const widgetMap = {
   "Ivy.ListItem": ListItemWidget,
 
   // Tree
-  "Ivy.Tree": TreeWidget,
+  "Ivy.Tree": lazyWithRetry(() =>
+    import("@/widgets/tree/TreeWidget").then((m) => ({
+      default: m.TreeWidget,
+    })),
+  ),
 
   // Details
   "Ivy.Details": DetailsWidget,
@@ -303,7 +334,11 @@ export const widgetMap = {
   "Ivy.Animation": lazyWithRetry(() => import("@/widgets/effects/AnimationWidget")),
 
   // Internal
-  "Ivy.Docs.Shared.Internal.SmartSearch": SmartSearch,
+  "Ivy.Docs.Shared.Internal.SmartSearch": lazyWithRetry(() =>
+    import("@/docs-internal/SmartSearch").then((m) => ({
+      default: m.SmartSearch,
+    })),
+  ),
   "Ivy.Widgets.Internal.SidebarNews": lazyWithRetry(
     () => import("@/widgets/internal/SidebarNewsWidget"),
   ),
