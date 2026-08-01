@@ -1,6 +1,7 @@
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    extract::State,
+    extract::{Path, State},
+    http::{header, StatusCode},
     response::IntoResponse,
     routing::get,
     Router,
@@ -16,6 +17,7 @@ use uuid::Uuid;
 use crate::core::runtime::RuntimeMessage;
 use crate::views::view::View;
 
+use super::download::DownloadService;
 use super::session::AppSessionStore;
 
 /// Messages sent from client to server.
@@ -90,6 +92,11 @@ impl RustyServer {
         let mut router = Router::new()
             .route("/ws", get(ws_handler))
             .route("/health", get(health_handler))
+            // axum 0.8 path params use brace syntax.
+            .route(
+                "/rusty/download/{connection_id}/{download_id}",
+                get(download_handler),
+            )
             .with_state(state);
 
         if let Some(dir) = self.static_dir {
@@ -144,6 +151,49 @@ async fn health_handler() -> &'static str {
 
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_socket(socket, state))
+}
+
+/// Serve a download registered by a view through `use_download`.
+///
+/// Downloads are keyed by connection, so a URL only resolves for the session that
+/// created it. Anything unresolvable — unknown session, unparseable or unknown
+/// download id, or a factory that failed — is a 404.
+async fn download_handler(
+    Path((connection_id, download_id)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let Ok(download_id) = Uuid::parse_str(&download_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Some(session_arc) = state.session_store.get_session(&connection_id).await else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    // Resolve the service and release the session lock before running the factory,
+    // which may take a while and must not block the session's event loop.
+    let download_service = {
+        let session = session_arc.read().await;
+        session.services.get::<DownloadService>()
+    };
+    let Some(download_service) = download_service else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let Some(response) = download_service.take_bytes(download_id).await else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    (
+        [
+            (header::CONTENT_TYPE, response.mime_type),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{}\"", response.file_name),
+            ),
+        ],
+        response.bytes,
+    )
+        .into_response()
 }
 
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {

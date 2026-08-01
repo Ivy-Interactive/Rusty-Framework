@@ -2,16 +2,22 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 
+use crate::core::query_cache::QueryService;
 use crate::core::reconciler::Reconciler;
 use crate::core::runtime::Runtime;
+use crate::core::services::{AppContext, ServiceRegistry};
+use crate::core::signals::{ServerSignals, SignalRegistry};
 use crate::views::view::View;
 
+use super::download::DownloadService;
 use super::ws::FuncView;
 
 /// Per-connection state holding an isolated Runtime and Reconciler.
 pub struct AppSession {
     pub runtime: Runtime,
     pub reconciler: Reconciler,
+    /// The services this session's views resolve through `use_service`.
+    pub services: Arc<ServiceRegistry>,
 }
 
 /// Manages per-connection AppSessions, keyed by connection ID.
@@ -21,27 +27,67 @@ pub struct AppSessionStore {
     sessions: RwLock<HashMap<String, Arc<RwLock<AppSession>>>>,
     root_factory: Arc<dyn Fn() -> Box<dyn View> + Send + Sync>,
     shutdown_tx: broadcast::Sender<()>,
+    /// Shared by every session, so a server-scoped query is fetched once.
+    query_service: Arc<QueryService>,
+    /// Shared by every session, so a server-scoped signal reaches all connections.
+    server_signals: Arc<SignalRegistry>,
+    /// Background eviction and refresh tickers for `query_service`.
+    query_tasks: Vec<tokio::task::JoinHandle<()>>,
 }
 
 impl AppSessionStore {
     pub fn new(root_factory: Arc<dyn Fn() -> Box<dyn View> + Send + Sync>) -> Self {
         let (shutdown_tx, _) = broadcast::channel(16);
+        let query_service = Arc::new(QueryService::new());
+        // Only spawn the tickers inside a runtime; `AppSessionStore::new` is also
+        // called from sync contexts (`RustyServer::router`) in tests.
+        let query_tasks = if tokio::runtime::Handle::try_current().is_ok() {
+            query_service.start_background_tasks()
+        } else {
+            Vec::new()
+        };
+
         AppSessionStore {
             sessions: RwLock::new(HashMap::new()),
             root_factory,
             shutdown_tx,
+            query_service,
+            server_signals: Arc::new(SignalRegistry::new()),
+            query_tasks,
         }
     }
 
-    /// Create a new session with an isolated Runtime and Reconciler.
+    /// The server-wide query cache, shared by every session.
+    pub fn query_service(&self) -> &Arc<QueryService> {
+        &self.query_service
+    }
+
+    /// The server-wide signal registry, shared by every session.
+    pub fn server_signals(&self) -> &Arc<SignalRegistry> {
+        &self.server_signals
+    }
+
+    /// Create a new session with an isolated Runtime, Reconciler and service registry.
     /// Registers the connection and returns an Arc reference to the session.
     pub async fn create_session(&self, connection_id: String) -> Arc<RwLock<AppSession>> {
+        let services = Arc::new(ServiceRegistry::new());
+        services.register(Arc::new(AppContext::new(connection_id.clone())));
+        // Server-wide, shared across connections.
+        services.register(Arc::clone(&self.query_service));
+        services.register(Arc::new(ServerSignals::new(Arc::clone(
+            &self.server_signals,
+        ))));
+        // Per-connection.
+        services.register(Arc::new(SignalRegistry::new()));
+        services.register(Arc::new(DownloadService::new(connection_id.clone())));
+
         let view = (self.root_factory)();
-        let runtime = Runtime::new(FuncView(view));
+        let runtime = Runtime::with_services(FuncView(view), Arc::clone(&services));
         let reconciler = Reconciler::new();
         let session = Arc::new(RwLock::new(AppSession {
             runtime,
             reconciler,
+            services,
         }));
 
         let mut sessions = self.sessions.write().await;
@@ -82,6 +128,16 @@ impl AppSessionStore {
     /// Broadcast a shutdown signal to all subscribers.
     pub fn broadcast_shutdown(&self) {
         let _ = self.shutdown_tx.send(());
+    }
+}
+
+impl Drop for AppSessionStore {
+    fn drop(&mut self) {
+        // The tickers hold an Arc to the query service; without aborting them the
+        // cache would outlive the store.
+        for task in self.query_tasks.drain(..) {
+            task.abort();
+        }
     }
 }
 
@@ -237,6 +293,70 @@ mod tests {
         assert!(rx1.recv().await.is_ok());
         assert!(rx2.recv().await.is_ok());
         assert!(rx3.recv().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_create_session_registers_the_expected_services() {
+        let store = AppSessionStore::new(Arc::new(|| Box::new(TestView::new("services"))));
+        let session_arc = store.create_session("conn-1".to_string()).await;
+        let services = session_arc.read().await.services.clone();
+
+        let app_context = services.get::<AppContext>().expect("AppContext");
+        assert_eq!(app_context.connection_id, "conn-1");
+        assert!(services.get::<QueryService>().is_some());
+        assert!(services.get::<SignalRegistry>().is_some());
+        assert!(services.get::<ServerSignals>().is_some());
+        assert!(services.get::<DownloadService>().is_some());
+
+        // The runtime hands the same registry to every BuildContext it creates.
+        let runtime_services = session_arc.read().await.runtime.services().clone();
+        assert!(Arc::ptr_eq(&runtime_services, &services));
+    }
+
+    #[tokio::test]
+    async fn test_query_service_is_shared_but_session_signals_are_not() {
+        let store = AppSessionStore::new(Arc::new(|| Box::new(TestView::new("sharing"))));
+        let a = store.create_session("conn-a".to_string()).await;
+        let b = store.create_session("conn-b".to_string()).await;
+
+        let services_a = a.read().await.services.clone();
+        let services_b = b.read().await.services.clone();
+
+        let query_a = services_a.get::<QueryService>().unwrap();
+        let query_b = services_b.get::<QueryService>().unwrap();
+        assert!(
+            Arc::ptr_eq(&query_a, &query_b),
+            "the query cache is server-wide"
+        );
+        assert!(Arc::ptr_eq(&query_a, store.query_service()));
+
+        let server_a = services_a.get::<ServerSignals>().unwrap().registry();
+        let server_b = services_b.get::<ServerSignals>().unwrap().registry();
+        assert!(
+            Arc::ptr_eq(&server_a, &server_b),
+            "server-scoped signals are shared"
+        );
+
+        let session_a = services_a.get::<SignalRegistry>().unwrap();
+        let session_b = services_b.get::<SignalRegistry>().unwrap();
+        assert!(
+            !Arc::ptr_eq(&session_a, &session_b),
+            "session-scoped signals must be isolated per connection"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_download_service_is_scoped_to_its_connection() {
+        let store = AppSessionStore::new(Arc::new(|| Box::new(TestView::new("downloads"))));
+        let a = store.create_session("conn-a".to_string()).await;
+        let b = store.create_session("conn-b".to_string()).await;
+
+        let downloads_a = a.read().await.services.get::<DownloadService>().unwrap();
+        let downloads_b = b.read().await.services.get::<DownloadService>().unwrap();
+
+        assert_eq!(downloads_a.connection_id(), "conn-a");
+        assert_eq!(downloads_b.connection_id(), "conn-b");
+        assert!(!Arc::ptr_eq(&downloads_a, &downloads_b));
     }
 
     #[tokio::test]
