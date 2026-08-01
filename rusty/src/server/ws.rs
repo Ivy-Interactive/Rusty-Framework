@@ -446,14 +446,16 @@ mod tests {
     async fn push_debounce_caps_the_drain_rate_under_a_hot_producer() {
         let notify = std::sync::Arc::new(tokio::sync::Notify::new());
         let notify_clone = notify.clone();
+        let signal_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let signal_count_clone = signal_count.clone();
         let mut push_pending = false;
         let mut next_push = tokio::time::Instant::now();
         let mut drains = 0;
-        let mut signals = 0;
 
         let producer = tokio::spawn(async move {
             for _ in 0..5000 {
                 notify_clone.notify_one();
+                signal_count_clone.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 tokio::task::yield_now().await;
             }
         });
@@ -463,7 +465,6 @@ mod tests {
             tokio::select! {
                 _ = notify.notified(), if !push_pending => {
                     push_pending = true;
-                    signals += 1;
                 }
                 _ = tokio::time::sleep_until(next_push), if push_pending => {
                     push_pending = false;
@@ -477,6 +478,7 @@ mod tests {
         }
 
         let _ = producer.await;
+        let signals = signal_count.load(std::sync::atomic::Ordering::Relaxed);
         let window = std::time::Duration::from_millis(200);
         let max_drains = (window.as_millis() / MIN_PUSH_INTERVAL.as_millis()) + 2;
         assert!(
