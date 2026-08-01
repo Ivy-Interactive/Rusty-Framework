@@ -11,6 +11,7 @@
     "format": "vp fmt .",
     "format:check": "vp fmt --check .",
     "check:toolchain": "node scripts/check-toolchain-lockstep.mjs",
+    "doctor": "node scripts/check-installed-versions.mjs && node scripts/check-toolchain-lockstep.mjs",
     "preview": "vp preview",
     "test": "vp test",
     "e2e": "playwright test",
