@@ -75,6 +75,8 @@ will not stop this: `--admin` bypasses requirements for admins. The fix needs
 is gitignored and emitted by `rusty-docs/build.rs`, so rustfmt fails to resolve
 `mod generated` on a clean checkout.
 
+`cargo test --workspace` now asserts `e2e/app/index.html` is structurally loadable (matching script tag count, brace balance, no duplicate case labels), which catches breakages a `pageerror`-only check misses — a duplicated `</script>` throws no pageerror yet renders half the code as page text.
+
 ### Probing renovate.json
 
 `renovate.json` has no test and no CI check on its *contents* (`renovate-liveness` only checks the
