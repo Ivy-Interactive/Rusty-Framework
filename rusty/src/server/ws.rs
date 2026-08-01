@@ -35,6 +35,9 @@ pub enum ClientMessage {
     Navigate {
         #[serde(rename = "appId")]
         app_id: String,
+        /// Optional navigation state. A bare `{"method":"navigate","appId":"x"}`
+        /// must still deserialize instead of being silently dropped.
+        #[serde(default)]
         state: serde_json::Value,
     },
 }
@@ -248,8 +251,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             msg = receiver.next() => {
                 match msg {
                     Some(Ok(Message::Text(text))) => {
-                        if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
-                            match client_msg {
+                        match serde_json::from_str::<ClientMessage>(&text) {
+                            Err(err) => {
+                                tracing::warn!("Ignoring unparseable client message: {err}");
+                            }
+                            Ok(client_msg) => match client_msg {
                                 ClientMessage::Event {
                                     widget_id,
                                     event_name,
@@ -281,7 +287,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 ClientMessage::Navigate { .. } => {
                                     // Navigation handling (future)
                                 }
-                            }
+                            },
                         }
                     }
                     Some(Ok(_)) => {} // Ignore non-text messages
@@ -346,5 +352,44 @@ mod tests {
             .await
             .expect("bind");
         assert_eq!(addr.ip(), std::net::Ipv4Addr::UNSPECIFIED);
+    }
+
+    #[test]
+    fn navigate_deserializes_without_state() {
+        let msg: ClientMessage =
+            serde_json::from_str(r#"{"method":"navigate","appId":"reports"}"#).unwrap();
+        match msg {
+            ClientMessage::Navigate { app_id, state } => {
+                assert_eq!(app_id, "reports");
+                assert_eq!(state, serde_json::Value::Null);
+            }
+            other => panic!("expected Navigate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn navigate_still_deserializes_with_state() {
+        let msg: ClientMessage =
+            serde_json::from_str(r#"{"method":"navigate","appId":"reports","state":{"page":2}}"#)
+                .unwrap();
+        match msg {
+            ClientMessage::Navigate { app_id, state } => {
+                assert_eq!(app_id, "reports");
+                assert_eq!(state["page"], 2);
+            }
+            other => panic!("expected Navigate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn event_still_requires_all_fields() {
+        assert!(serde_json::from_str::<ClientMessage>(
+            r#"{"method":"event","widgetId":"btn-1","eventName":"click","args":[]}"#
+        )
+        .is_ok());
+        assert!(serde_json::from_str::<ClientMessage>(
+            r#"{"method":"event","widgetId":"btn-1","eventName":"click"}"#
+        )
+        .is_err());
     }
 }

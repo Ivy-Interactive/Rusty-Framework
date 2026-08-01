@@ -88,17 +88,13 @@ The frontend project uses **Vite+** integrated tools (**Oxlint** and **Oxfmt**) 
 
 ### Pre-commit Hooks
 
-We use a Husky npm package to set up the repo's pre-commit hook. It lints and formats staged frontend files.
+We use a Husky npm package to set up the repo's pre-commit hook. It lints and formats staged frontend files and runs rustfmt on staged .rs files.
 
-The active hook is `.husky/pre-commit`; `core.hooksPath` points at `.husky/_`, set by the `prepare` script. It reads its per-glob commands from the `lint-staged` key in `package.json`. Edit those two files. Vite+'s own `vp staged` runner is deliberately **not** used: husky's installer rewrites `core.hooksPath` on every `pnpm install`, so the two cannot coexist, and `.husky/pre-commit` also carries a merge-conflict-marker check that a `staged` glob map cannot express.
+The active hook is `.husky/pre-commit` (`core.hooksPath` points at `.husky/_`), and its frontend step reads per-glob commands from the `lint-staged` key in `package.json`. Edit those two files. Vite+'s own `vp staged` runner is deliberately **not** used: husky's installer rewrites `core.hooksPath` on every `pnpm install`, so the two cannot coexist, and `.husky/pre-commit` also carries a merge-conflict-marker check that a `staged` glob map cannot express.
+
+For Rust files, the hook runs `rustfmt --edition 2021 --config skip_children=true` on staged `.rs` files. Fully staged files are auto-formatted and re-added; partially staged files (where the worktree has unstaged edits) are checked only and will block the commit if unformatted. If `rustfmt` is not on `PATH`, the Rust block is skipped.
 
 Hooks are installed automatically by the `prepare` script when you run `pnpm install` in `src/frontend`. Ideally, you would not then need to run any formatting or lint commands as it will be done for you. In case you want to manually run them, you still can.
-
-If there are issues that auto-linting and formatting can't resolve automatically, your commit will be blocked from being pushed. If you really need to push, you can specify checks behavior per commit (not recommended):
-
-```bash
-git commit --no-verify -m "Commit message"
-```
 
 ### Code Formatting
 
