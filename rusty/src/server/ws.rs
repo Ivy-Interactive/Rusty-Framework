@@ -491,4 +491,301 @@ mod tests {
         )
         .is_err());
     }
+
+    // --- App routing over a live socket ---
+
+    use tokio::net::TcpStream;
+    use tokio_tungstenite::tungstenite::Message as WsMessage;
+    use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
+
+    type Client = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+    struct Label(&'static str);
+
+    impl crate::views::view::View for Label {
+        fn build(
+            &self,
+            _ctx: &mut crate::views::view::BuildContext,
+        ) -> crate::views::view::Element {
+            TextBlock::new(self.0).into()
+        }
+    }
+
+    /// `RustyServer::serve_background` reads its own `bind_address` field, which these
+    /// tests bypass by driving the router directly. Bind 127.0.0.1 explicitly: binding
+    /// all interfaces is blocked in some sandboxes.
+    async fn serve_on_loopback(router: Router) -> SocketAddr {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, router).await;
+        });
+        addr
+    }
+
+    /// `alpha` (default, registered first) and `beta`.
+    fn two_app_router() -> Router {
+        RustyServer::empty(0)
+            .with_app("alpha", "Alpha", || Label("alpha-view"))
+            .with_app("beta", "Beta", || Label("beta-view"))
+            .router()
+    }
+
+    async fn connect(addr: SocketAddr, query: &str) -> Client {
+        let url = format!("ws://{addr}/ws{query}");
+        let (client, _) = connect_async(&url).await.expect("websocket handshake");
+        client
+    }
+
+    /// Read the next `refresh` and return its widget tree as a string.
+    ///
+    /// Times out rather than hanging the suite: a missing refresh is a test failure,
+    /// not a reason to wait forever.
+    async fn next_refresh(client: &mut Client) -> String {
+        let text = next_message(client).await;
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["method"], "refresh", "expected a refresh, got {text}");
+        value["widgets"].to_string()
+    }
+
+    async fn next_message(client: &mut Client) -> String {
+        let deadline = std::time::Duration::from_secs(5);
+        loop {
+            let msg = tokio::time::timeout(deadline, client.next())
+                .await
+                .expect("timed out waiting for a server message")
+                .expect("stream ended")
+                .expect("websocket error");
+            if let WsMessage::Text(text) = msg {
+                return text.to_string();
+            }
+        }
+    }
+
+    /// Assert the server sends nothing for `millis` - used where a message would be a bug.
+    async fn assert_quiet(client: &mut Client, millis: u64) {
+        let quiet =
+            tokio::time::timeout(std::time::Duration::from_millis(millis), client.next()).await;
+        if let Ok(Some(Ok(WsMessage::Text(text)))) = quiet {
+            panic!("expected silence, got {text}");
+        }
+    }
+
+    async fn send_navigate(client: &mut Client, app_id: &str) {
+        let json = format!(r#"{{"method":"navigate","appId":"{app_id}","state":null}}"#);
+        client.send(WsMessage::Text(json.into())).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_initial_connection_serves_default_app() {
+        let addr = serve_on_loopback(two_app_router()).await;
+        let mut client = connect(addr, "").await;
+
+        let tree = next_refresh(&mut client).await;
+        assert!(tree.contains("alpha-view"), "got {tree}");
+    }
+
+    #[tokio::test]
+    async fn test_app_id_query_param_selects_the_app() {
+        let addr = serve_on_loopback(two_app_router()).await;
+        let mut client = connect(addr, "?appId=beta").await;
+
+        let tree = next_refresh(&mut client).await;
+        assert!(tree.contains("beta-view"), "got {tree}");
+        assert!(!tree.contains("alpha-view"), "got {tree}");
+    }
+
+    #[tokio::test]
+    async fn test_unknown_app_id_query_param_falls_back_to_default() {
+        let addr = serve_on_loopback(two_app_router()).await;
+        let mut client = connect(addr, "?appId=does-not-exist").await;
+
+        // A bookmarked dead link should still land somewhere.
+        let tree = next_refresh(&mut client).await;
+        assert!(tree.contains("alpha-view"), "got {tree}");
+    }
+
+    #[tokio::test]
+    async fn test_navigate_switches_app_and_sends_a_refresh() {
+        let addr = serve_on_loopback(two_app_router()).await;
+        let mut client = connect(addr, "").await;
+        assert!(next_refresh(&mut client).await.contains("alpha-view"));
+
+        send_navigate(&mut client, "beta").await;
+
+        // A full refresh, not update patches: the client's tree was replaced wholesale.
+        let tree = next_refresh(&mut client).await;
+        assert!(tree.contains("beta-view"), "got {tree}");
+    }
+
+    #[tokio::test]
+    async fn test_navigate_back_and_forth() {
+        let addr = serve_on_loopback(two_app_router()).await;
+        let mut client = connect(addr, "").await;
+        assert!(next_refresh(&mut client).await.contains("alpha-view"));
+
+        send_navigate(&mut client, "beta").await;
+        assert!(next_refresh(&mut client).await.contains("beta-view"));
+
+        send_navigate(&mut client, "alpha").await;
+        assert!(next_refresh(&mut client).await.contains("alpha-view"));
+    }
+
+    #[tokio::test]
+    async fn test_navigate_to_unknown_app_keeps_connection_and_tree() {
+        let addr = serve_on_loopback(two_app_router()).await;
+        let mut client = connect(addr, "").await;
+        assert!(next_refresh(&mut client).await.contains("alpha-view"));
+
+        send_navigate(&mut client, "does-not-exist").await;
+        assert_quiet(&mut client, 300).await;
+
+        // The socket is still usable: a valid navigate still works.
+        send_navigate(&mut client, "beta").await;
+        assert!(next_refresh(&mut client).await.contains("beta-view"));
+    }
+
+    #[tokio::test]
+    async fn test_navigation_does_not_affect_other_connections() {
+        let addr = serve_on_loopback(two_app_router()).await;
+        let mut a = connect(addr, "").await;
+        let mut b = connect(addr, "").await;
+        assert!(next_refresh(&mut a).await.contains("alpha-view"));
+        assert!(next_refresh(&mut b).await.contains("alpha-view"));
+
+        send_navigate(&mut a, "beta").await;
+        assert!(next_refresh(&mut a).await.contains("beta-view"));
+
+        // B stays where it was and hears nothing about A's navigation.
+        assert_quiet(&mut b, 300).await;
+    }
+
+    #[tokio::test]
+    async fn test_legacy_new_constructor_still_serves_its_root_view() {
+        let addr = serve_on_loopback(RustyServer::new(0, || Label("legacy-view")).router()).await;
+        let mut client = connect(addr, "").await;
+
+        let tree = next_refresh(&mut client).await;
+        assert!(tree.contains("legacy-view"), "got {tree}");
+    }
+
+    #[tokio::test]
+    async fn test_services_resolve_over_a_live_connection() {
+        struct Greeting(&'static str);
+
+        struct GreetingView;
+
+        impl crate::views::view::View for GreetingView {
+            fn build(
+                &self,
+                ctx: &mut crate::views::view::BuildContext,
+            ) -> crate::views::view::Element {
+                let greeting = crate::hooks::use_service::<Greeting>(ctx);
+                TextBlock::new(greeting.0).into()
+            }
+        }
+
+        let router = RustyServer::empty(0)
+            .with_app("greeter", "Greeter", || GreetingView)
+            .with_service(Greeting("service-value"))
+            .router();
+        let addr = serve_on_loopback(router).await;
+        let mut client = connect(addr, "").await;
+
+        let tree = next_refresh(&mut client).await;
+        assert!(tree.contains("service-value"), "got {tree}");
+    }
+
+    #[tokio::test]
+    async fn test_navigate_with_state_omitted_still_navigates() {
+        let addr = serve_on_loopback(two_app_router()).await;
+        let mut client = connect(addr, "").await;
+        assert!(next_refresh(&mut client).await.contains("alpha-view"));
+
+        // No `state` key at all - without #[serde(default)] this is dropped silently.
+        client
+            .send(WsMessage::Text(
+                r#"{"method":"navigate","appId":"beta"}"#.into(),
+            ))
+            .await
+            .unwrap();
+
+        assert!(next_refresh(&mut client).await.contains("beta-view"));
+    }
+
+    #[tokio::test]
+    async fn test_events_dispatch_to_the_app_mounted_after_navigation() {
+        struct CounterView;
+
+        impl crate::views::view::View for CounterView {
+            fn build(
+                &self,
+                ctx: &mut crate::views::view::BuildContext,
+            ) -> crate::views::view::Element {
+                let count = crate::hooks::use_state(ctx, 0i32);
+                let setter = count.clone();
+                // A Layout root, not Element::Fragment: a tagged newtype variant wrapping
+                // a sequence cannot be serialized, so a Fragment root arrives as null.
+                crate::widgets::Layout::vertical()
+                    .children(vec![
+                        crate::widgets::TextBlock::new(&format!("b:{}", count.get())).into(),
+                        crate::widgets::Button::new("inc")
+                            .on_click(move || setter.set(setter.get() + 1))
+                            .into(),
+                    ])
+                    .into()
+            }
+        }
+
+        let router = RustyServer::empty(0)
+            .with_app("alpha", "Alpha", || Label("alpha-view"))
+            .with_app("beta", "Beta", || CounterView)
+            .router();
+        let addr = serve_on_loopback(router).await;
+        let mut client = connect(addr, "").await;
+        assert!(next_refresh(&mut client).await.contains("alpha-view"));
+
+        send_navigate(&mut client, "beta").await;
+        let after_nav = next_refresh(&mut client).await;
+        assert!(after_nav.contains("b:0"), "got {after_nav}");
+
+        // Read the button's id out of the tree the server just sent: ids restart per
+        // runtime, and the root Layout takes w-0.
+        let tree: serde_json::Value = serde_json::from_str(&after_nav).unwrap();
+        let button_id = tree["children"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|child| child["type"] == "button")
+            .and_then(|child| child["id"].as_str())
+            .expect("the beta app should render a button")
+            .to_string();
+
+        let event = format!(
+            r#"{{"method":"event","widgetId":"{button_id}","eventName":"click","args":[]}}"#
+        );
+        client.send(WsMessage::Text(event.into())).await.unwrap();
+
+        // The event reached the post-navigation runtime, which means handle_socket
+        // re-read the event sender after the swap.
+        let update = next_message(&mut client).await;
+        assert!(update.contains("b:1"), "got {update}");
+    }
+
+    #[tokio::test]
+    async fn test_health_endpoint_still_responds() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let addr = serve_on_loopback(two_app_router()).await;
+        let mut stream = TcpStream::connect(addr).await.unwrap();
+        stream
+            .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .await
+            .unwrap();
+
+        let mut response = String::new();
+        stream.read_to_string(&mut response).await.unwrap();
+        assert!(response.contains("200 OK"), "got {response}");
+        assert!(response.trim_end().ends_with("ok"), "got {response}");
+    }
 }
