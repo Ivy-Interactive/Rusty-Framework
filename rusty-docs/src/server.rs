@@ -65,7 +65,7 @@ impl View for DocsShellView {
         let page_view = PageView {
             page_index: active_index.get(),
         };
-        let (content, _view_id, _hook_store) = ctx.child_view(page_view, None);
+        let (content, _view_id) = ctx.child_view(page_view);
 
         let content_area = Layout::vertical().padding(32.0).gap(16.0).child(content);
 

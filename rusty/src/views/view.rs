@@ -194,6 +194,10 @@ pub type EffectCallback = Box<dyn FnOnce() -> Option<EffectCleanup> + Send>;
 pub struct EffectRecord {
     pub callback: EffectCallback,
     pub hook_index: usize,
+    /// ViewId of the view that registered this effect. Child-view effects are
+    /// merged into the parent's list, so the runtime needs this to store each
+    /// cleanup in its own view's store rather than clobbering index-mates.
+    pub view_id: ViewId,
 }
 
 /// Entry for a child view registered during build via `child_view()`.
@@ -290,6 +294,7 @@ impl<'a> BuildContext<'a> {
         self.effects.push(EffectRecord {
             callback,
             hook_index,
+            view_id: self.current_view_id,
         });
     }
 
@@ -336,18 +341,20 @@ impl<'a> BuildContext<'a> {
     /// (similar to hook ordering). The child view gets its own HookStore and
     /// is registered in the ViewTree under the current view.
     ///
-    /// The `child_store` parameter is an optional pre-existing HookStore for this child.
-    /// If None, a fresh store is created. Pass in the store from previous builds to
-    /// preserve hook state across re-renders.
-    pub fn child_view(
-        &mut self,
-        view: impl View,
-        child_store: Option<&mut HookStore>,
-    ) -> (Element, ViewId, HookStore) {
+    /// The child's HookStore is persisted inside the parent's store under the
+    /// child's ViewId, so hook state and effect cleanups survive re-renders
+    /// without the caller threading a store back in.
+    pub fn child_view(&mut self, view: impl View) -> (Element, ViewId) {
         let child_index = self.child_views.len();
         let child_view_id = self.child_view_id(child_index);
 
-        let mut owned_store = child_store.map(std::mem::take).unwrap_or_default();
+        // Take the child's persisted store out of the parent's store for the
+        // duration of the build, then put it back with its cleanups intact.
+        let mut owned_store = self
+            .store
+            .child_stores
+            .remove(&child_view_id)
+            .unwrap_or_default();
 
         let mut child_ctx = BuildContext::with_services(
             &mut owned_store,
@@ -370,7 +377,8 @@ impl<'a> BuildContext<'a> {
         let child_registry = child_ctx.take_event_registry();
         self.event_registry.merge(child_registry);
 
-        // Collect child effects into parent
+        // Collect child effects into parent. Each record carries its owning
+        // ViewId, so the runtime can still route every cleanup to its own store.
         let child_effects = child_ctx.drain_effects();
         self.effects.extend(child_effects);
 
@@ -384,7 +392,9 @@ impl<'a> BuildContext<'a> {
             element: element.clone(),
         });
 
-        (element, child_view_id, owned_store)
+        self.store.child_stores.insert(child_view_id, owned_store);
+
+        (element, child_view_id)
     }
 
     /// Look up a context value by TypeId, walking the ancestor chain.
