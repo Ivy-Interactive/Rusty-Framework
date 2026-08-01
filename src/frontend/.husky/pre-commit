@@ -24,6 +24,9 @@ if [ -n "$RUST_FILES" ]; then
   fi
 fi
 
+# Compile-class gates for merge resolutions (no-op for ordinary commits).
+sh -e "$(git rev-parse --show-toplevel)/scripts/precommit-rust-gates.sh"
+
 # Check if any frontend files are staged
 FRONTEND_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep "^src/frontend/" || true)
 
