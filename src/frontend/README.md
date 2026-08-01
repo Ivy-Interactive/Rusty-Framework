@@ -186,35 +186,41 @@ in fact does - `ChatWidget.tsx` imports `Button` and `ChatInput` that way.
 
 ### How to check
 
-**The build will fail.** `vite.config.mjs` has an `assert-lazy-chunks` plugin that reads the module
-graph in `generateBundle` and fails the build if any first-party dynamically imported module lands in
-a chunk that is also statically imported (exit 1, with the source file and chunk name reported). This
-replaces an earlier plugin that promoted Rolldown's `INEFFECTIVE_DYNAMIC_IMPORT` warning: that warning
-is never emitted on `vite-plus` 0.2.7, so the old gate was silent while both known bug shapes built
-with exit 0. Reading the module graph works on the pinned version.
+**Do not rely on the build failing.** `vite.config.mjs` has an `assert-lazy-chunks` plugin that reads
+the module graph in `generateBundle` and checks that first-party dynamically imported modules do not
+land in statically-imported chunks. However, this gate does not catch all regression shapes: a barrel
+re-exporting a lazy widget can defeat the split with exit 0 and no warning. The byte budget check
+described below catches both classes.
 
-Chunk size is not a signal. The defeated chunk is still emitted at close to its normal size (13,952
-bytes vs 13,925 correct), so the "69-byte facade" symptom described in older notes no longer appears.
+**Chunk size is not a signal either.** The defeated chunk is still emitted at close to its normal size
+(13,952 bytes vs 13,925 correct), so the "69-byte facade" symptom described in older notes no longer
+appears.
 
-To manually confirm a specific widget is lazy after `pnpm run build`:
+Run the bundle budget check after building:
 
 ```bash
 cd src/frontend
-for w in ChatWidget ListWidget; do
-  c=$(ls dist/assets | grep -E "^${w}-[^-]*\.js$" | head -1)
-  grep -qF -e "import\"./$c" -e "from\"./$c" dist/assets/*.js &&
-    echo "EAGER (lazy loading defeated): $w [$c]"
-done
+pnpm run build && pnpm run check:bundle
 ```
 
-Silence means the widget is genuinely lazy. The distinction is that a lazy edge is emitted as
-``import(`./ChatWidget-<hash>.js`)`` with backticks, whereas an eager one appears as a
-double-quoted `import"./ChatWidget-<hash>.js"` or `from"./ChatWidget-<hash>.js"`. Widen the `for`
-list to check other widgets; names that share a chunk with another widget have no chunk of their own
-and will simply not match.
+This check walks static import edges from the entry chunk named in `dist/index.html` and fails if the
+total eager JS exceeds a byte budget (`MAX_EAGER_BYTES` in
+`scripts/check-eager-bundle.mjs`). Exit codes:
+
+- `0`: pass
+- `1`: over budget (the error message lists the largest chunks)
+- `2`: the check itself could not run (no `dist/`, or the modulepreload cross-check failed)
+
+A chunk is eager because a **static import edge** reaches it from the entry. To fix a budget failure,
+find the new edge and make it dynamic, or import a concrete module instead of a barrel that re-exports
+a lazy one. Re-partitioning with `manualChunks` does not help � it moves code between chunks without
+changing what is fetched. If the growth is intentional, raise `MAX_EAGER_BYTES` in the same commit and
+say why in the PR description.
+
+This check also runs in CI's `frontend` job, so regressions are caught before merge.
 
 A cheaper guard for a barrel you have already fixed is a unit test asserting the barrel does not
-mention the lazy widget - see `src/widgets/lists/index.test.ts`. That catches a re-added `export`
+mention the lazy widget � see `src/widgets/lists/index.test.ts`. That catches a re-added `export`
 without a build, though only for the barrel it names.
 
 ### Barrels with no importers are inert
@@ -339,16 +345,17 @@ Tests are automatically run in GitHub Actions on push to main/master branches an
 
 ## Available Commands and Scripts
 
-| Command/Script       | Description                           |
-| -------------------- | ------------------------------------- |
-| `vp dev`             | Start development server              |
-| `vp run build`       | Build for production (typecheck + vp) |
-| `vp preview`         | Preview production build              |
-| `vp test`            | Run unit tests with Vitest            |
-| `vp run e2e`         | Run all end-to-end tests              |
-| `vp run e2e:docs`    | Run Ivy.Docs end-to-end tests         |
-| `vp run e2e:samples` | Run Ivy.Samples end-to-end tests      |
-| `vp lint .`          | Check for linting issues              |
-| `vp lint --fix .`    | Fix linting issues automatically      |
-| `vp fmt .`           | Format all files with Oxfmt           |
-| `vp fmt --check .`   | Check if files are properly formatted |
+| Command/Script        | Description                                    |
+| --------------------- | ---------------------------------------------- |
+| `vp dev`              | Start development server                       |
+| `vp run build`        | Build for production (typecheck + vp)          |
+| `vp run check:bundle` | Check the eager bundle against its byte budget |
+| `vp preview`          | Preview production build                       |
+| `vp test`             | Run unit tests with Vitest                     |
+| `vp run e2e`          | Run all end-to-end tests                       |
+| `vp run e2e:docs`     | Run Ivy.Docs end-to-end tests                  |
+| `vp run e2e:samples`  | Run Ivy.Samples end-to-end tests               |
+| `vp lint .`           | Check for linting issues                       |
+| `vp lint --fix .`     | Fix linting issues automatically               |
+| `vp fmt .`            | Format all files with Oxfmt                    |
+| `vp fmt --check .`    | Check if files are properly formatted          |
