@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '0 7 * * 1'   # Mondays 07:00 UTC - the periodic review, automated
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -37,8 +40,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: cargo fmt --all -- --check
 
+      - name: Pre-commit hook harness
+        if: ${{ !cancelled() }}
+        run: sh ./scripts/test-precommit-hook.sh
+
   alert-on-red-main:
-    needs: build
+    needs: [build, frontend, renovate-liveness, e2e]
     if: ${{ failure() && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
@@ -88,6 +95,9 @@ jobs:
       - name: Toolchain lockstep
         run: pnpm run check:toolchain
 
+      - name: Installed tree matches manifest
+        run: pnpm run check:installed
+
       - name: Lint  # --max-warnings=0 lives in the lint script; vp rejects the flag twice
         run: pnpm lint
 
@@ -97,8 +107,14 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      - name: Bundle budget
+        run: pnpm run check:bundle
+
       - name: Test
         run: pnpm test
+
+      - name: Format check
+        run: pnpm format:check
 
   renovate-liveness:
     runs-on: ubuntu-latest
@@ -181,3 +197,22 @@ jobs:
             e2e/playwright-report/
             e2e/test-results/
           retention-days: 7
+
+  cargo-majors:
+    # Renovate parks cargo majors and omits parked deps from the Dependency Dashboard
+    # entirely, so this is the only thing that surfaces them. Report-only by design.
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Report cargo major updates
+        run: node scripts/check-cargo-majors.mjs
