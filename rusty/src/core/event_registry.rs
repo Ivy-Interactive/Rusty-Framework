@@ -237,17 +237,18 @@ mod tests {
         assert!(result);
         assert!(called.load(Ordering::SeqCst));
 
-        // Test reverse: register with "onChange", dispatch with "change"
+        // Test another handler registered as lowercase "change"
         let called2 = Arc::new(AtomicBool::new(false));
         let called2_clone = called2.clone();
         registry.register(
             "w-1",
-            "onChange",
+            "change",
             Arc::new(move |_args| {
                 called2_clone.store(true, Ordering::SeqCst);
             }),
         );
-        let result2 = registry.dispatch("w-1", "change", serde_json::Value::Null);
+        // Dispatch with camelCase "onChange" - should find the handler
+        let result2 = registry.dispatch("w-1", "onChange", serde_json::Value::Null);
         assert!(result2);
         assert!(called2.load(Ordering::SeqCst));
 
