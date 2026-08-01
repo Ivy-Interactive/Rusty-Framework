@@ -1,6 +1,9 @@
 use crate::hooks::use_state::State;
 use crate::views::view::BuildContext;
 
+#[cfg(test)]
+use crate::views::view::RebuildHandle;
+
 /// A ref handle that wraps `State<T>` but does NOT trigger rebuilds on mutation.
 ///
 /// Analogous to Ivy-Framework's `UseRef` which is `UseState(buildOnChange: false)`.
@@ -45,8 +48,10 @@ mod tests {
     #[test]
     fn test_use_ref_does_not_trigger_rebuild() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        let notify = std::sync::Arc::new(tokio::sync::Notify::new());
+        let handle = RebuildHandle::new(tx, notify);
         let mut store = HookStore::new();
-        let mut ctx = BuildContext::new(&mut store, Some(tx));
+        let mut ctx = BuildContext::new(&mut store, Some(handle));
         let r = use_ref(&mut ctx, 0);
 
         r.set(99);

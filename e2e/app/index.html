@@ -26,13 +26,29 @@
     code { font-family: monospace; background: #f5f5f5; padding: 2px 4px; border-radius: 2px; }
     label.checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
     .field-label { display: block; font-size: 0.85em; font-weight: 600; margin-bottom: 4px; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; background: #eee; }
-    .badge[data-variant="outline"] { background: transparent; border: 1px solid #999; }
-    .dialog-box { border: 1px solid #999; border-radius: 8px; padding: 16px; background: #fff; }
-    .dialog-title { font-weight: bold; margin-bottom: 8px; }
-    .dialog-footer { margin-top: 12px; display: flex; gap: 8px; }
-    table { border-collapse: collapse; }
-    th, td { border: 1px solid #ddd; padding: 4px 8px; text-align: left; }
+    textarea, input[type="date"], input[type="color"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+    .spacer { flex: 1 1 auto; min-height: 8px; min-width: 8px; }
+    .separator[data-orientation="horizontal"] { border-top: 1px solid #e0e0e0; margin: 8px 0; }
+    .separator[data-orientation="vertical"] { border-left: 1px solid #e0e0e0; margin: 0 8px; align-self: stretch; }
+    .container[data-border="true"] { border: 1px solid #e0e0e0; }
+    .container[data-rounded="true"] { border-radius: 8px; }
+    .avatar { display: inline-flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 50%; background: #e0e0e0; }
+    .avatar[data-size="compact"] { width: 24px; height: 24px; font-size: 0.7em; }
+    .avatar[data-size="normal"] { width: 40px; height: 40px; }
+    .avatar[data-size="comfortable"] { width: 56px; height: 56px; font-size: 1.2em; }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .callout { border-left: 4px solid #0066cc; padding: 12px; background: #f5f8ff; border-radius: 4px; }
+    .callout[data-variant="success"] { border-left-color: #28a745; background: #f3fbf5; }
+    .callout[data-variant="warning"] { border-left-color: #ffc107; background: #fffbf0; }
+    .callout[data-variant="error"] { border-left-color: #dc3545; background: #fdf5f6; }
+    .callout-title { font-weight: bold; }
+    .skeleton { min-width: 40px; min-height: 12px; background: #eee; border-radius: 4px; }
+    .expandable [data-expandable-header] { display: block; width: 100%; text-align: left; }
+    .list { display: flex; flex-direction: column; }
+    .list-item { display: flex; align-items: center; gap: 8px; padding: 8px; border-bottom: 1px solid #f0f0f0; }
+    .list-item [data-list-item-subtitle] { color: #666; font-size: 0.9em; }
+    .radio-group { display: flex; gap: 8px; }
+    [data-widget-type="radio_group"][data-orientation="vertical"] .radio-group { flex-direction: column; }
   </style>
 </head>
 <body>
@@ -72,6 +88,17 @@
       }
     }
 
+    // `Color` serializes untagged: a named colour or hex arrives as a string,
+    // an rgba arrives as `{r, g, b, a}`.
+    function cssColor(value) {
+      if (value == null) return null;
+      if (typeof value === 'string') return value;
+      if (typeof value === 'object' && value.r != null) {
+        return `rgba(${value.r}, ${value.g}, ${value.b}, ${value.a})`;
+      }
+      return String(value);
+    }
+
     function renderWidget(node) {
       if (!node || typeof node !== 'object') {
         return document.createTextNode(String(node || ''));
@@ -87,7 +114,7 @@
         case 'button': {
           const btn = document.createElement('button');
           btn.textContent = node.title || '';
-          btn.setAttribute('data-variant', node.variant || 'primary');
+          if (node.variant) btn.setAttribute('data-variant', node.variant);
           if (node.disabled) btn.disabled = true;
           if (node.loading) btn.setAttribute('data-loading', 'true');
           if (node.hasOnClick && node.id) {
@@ -212,6 +239,12 @@
           el.setAttribute('data-direction', node.direction || 'vertical');
           if (node.gap) el.style.gap = node.gap + 'px';
           if (node.padding) el.style.padding = node.padding + 'px';
+          if (node.width) el.style.width = node.width;
+          if (node.height) el.style.height = node.height;
+          if (node.wrap) {
+            el.style.flexWrap = 'wrap';
+            el.setAttribute('data-wrap', 'true');
+          }
           if (node.direction === 'grid' && node.columns) {
             el.style.gridTemplateColumns = `repeat(${node.columns}, 1fr)`;
           }
@@ -419,104 +452,6 @@
           }
           break;
         }
-        default: {
-          el.textContent = `[Unknown widget: ${type}]`;
-          // Still render children if present
-          (node.children || []).forEach(child => {
-            el.appendChild(renderWidget(child));
-          });
-          break;
-        }
-      }
-
-      return el;
-    }
-
-    // Simple patch application: on any update, request full re-render
-    // This is sufficient for E2E tests which just need to see updated state
-    function applyPatches(patches) {
-      // Patches change the JSON tree. For E2E simplicity, we track
-      // the current tree and apply patches to it, then re-render.
-      // But since we don't store the tree, we'll just wait for the
-      // next refresh. The server sends updates as patches but we can
-      // simply re-render by storing the last known tree.
-    }
-
-    // Enhanced: store last tree and apply patches
-    let currentTree = null;
-    const originalOnMessage = null;
-
-    // Reconnect state
-    let reconnectAttempts = 0;
-    const RETRY_DELAYS = [0, 2000, 10000];
-    const MAX_RECONNECT_ATTEMPTS = 10;
-
-    function scheduleReconnect() {
-      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        app.textContent = 'Connection failed after ' + MAX_RECONNECT_ATTEMPTS + ' attempts';
-        return;
-      }
-      const delay = RETRY_DELAYS[Math.min(reconnectAttempts, RETRY_DELAYS.length - 1)];
-      reconnectAttempts++;
-      app.textContent = 'Disconnected. Reconnecting in ' + delay + 'ms... (attempt ' + reconnectAttempts + ')';
-      setTimeout(() => connectEnhanced(), delay);
-    }
-
-    // Override to track tree state
-    function connectEnhanced() {
-      ws = new WebSocket(wsUrl);
-      ws.onopen = () => {
-        reconnectAttempts = 0;
-        app.textContent = 'Connected, waiting for render...';
-      };
-      ws.onclose = () => { scheduleReconnect(); };
-      ws.onerror = () => {};
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        if (msg.method === 'refresh') {
-          currentTree = msg.widgets;
-          app.innerHTML = '';
-          app.appendChild(renderWidget(currentTree));
-        } else if (msg.method === 'update') {
-          if (currentTree && msg.patches) {
-            for (const patch of msg.patches) {
-              applyPatch(currentTree, patch);
-            }
-            app.innerHTML = '';
-            app.appendChild(renderWidget(currentTree));
-          }
-        }
-      };
-    }
-
-    function applyPatch(tree, patch) {
-      if (patch.op === 'replace') {
-        // Navigate the path and replace
-        const parts = patch.path.split('/').filter(Boolean);
-        let node = tree;
-        for (let i = 0; i < parts.length - 1; i++) {
-          const key = parts[i];
-          if (Array.isArray(node)) {
-            node = node[parseInt(key)];
-          } else if (node && typeof node === 'object') {
-            node = node[key];
-          }
-        }
-        if (node && parts.length > 0) {
-          const lastKey = parts[parts.length - 1];
-          if (Array.isArray(node)) {
-            node[parseInt(lastKey)] = patch.value;
-          } else {
-            node[lastKey] = patch.value;
-          }
-        }
-      }
-    }
-
-    connectEnhanced();
-  </script>
-</body>
-</html>
         case 'badge': {
           const badge = document.createElement('span');
           badge.classList.add('badge');
@@ -603,6 +538,417 @@
           el.setAttribute('title', node.content || '');
           el.setAttribute('data-tooltip', node.content || '');
           if (node.child) el.appendChild(renderWidget(node.child));
+          break;
+        }
+        default: {
+          el.textContent = `[Unknown widget: ${type}]`;
+          // Still render children if present
+          (node.children || []).forEach(child => {
+            el.appendChild(renderWidget(child));
+          });
+          break;
+        }
+      }
+          }
+          break;
+        }
+        case 'spacer': {
+          el.classList.add('spacer');
+          break;
+        }
+        case 'separator': {
+          const orientation = node.orientation || 'horizontal';
+          el.setAttribute('data-orientation', orientation);
+          el.classList.add('separator');
+          if (node.text) {
+            const t = document.createElement('span');
+            t.setAttribute('data-separator-text', 'true');
+            t.textContent = node.text;
+            el.appendChild(t);
+          }
+          break;
+        }
+        case 'container': {
+          el.classList.add('container');
+          if (node.padding != null) el.style.padding = node.padding + 'px';
+          if (node.width) el.style.width = node.width;
+          if (node.height) el.style.height = node.height;
+          const background = cssColor(node.background);
+          if (background) {
+            el.style.background = background;
+            el.setAttribute('data-background', background);
+          }
+          if (node.border) el.setAttribute('data-border', 'true');
+          if (node.rounded) el.setAttribute('data-rounded', 'true');
+          (node.children || []).forEach(child => {
+            el.appendChild(renderWidget(child));
+          });
+          break;
+        }
+        case 'icon': {
+          el.setAttribute('data-icon-name', node.name || '');
+          if (node.size != null) {
+            el.setAttribute('data-size', String(node.size));
+            el.style.fontSize = node.size + 'px';
+          }
+          const color = cssColor(node.color);
+          if (color) {
+            el.setAttribute('data-color', color);
+            el.style.color = color;
+          }
+          const glyph = document.createElement('span');
+          glyph.classList.add('icon-glyph');
+          glyph.textContent = node.name || '';
+          el.appendChild(glyph);
+          break;
+        }
+        case 'image': {
+          const img = document.createElement('img');
+          img.src = node.src || '';
+          img.alt = node.alt || '';
+          if (node.width) img.style.width = node.width;
+          if (node.height) img.style.height = node.height;
+          el.appendChild(img);
+          break;
+        }
+        case 'avatar': {
+          el.classList.add('avatar');
+          el.setAttribute('data-size', node.size || 'normal');
+          if (node.image) {
+            const img = document.createElement('img');
+            img.src = node.image;
+            img.alt = node.fallback || '';
+            el.appendChild(img);
+          } else {
+            const initials = document.createElement('span');
+            initials.setAttribute('data-fallback', 'true');
+            initials.textContent = node.fallback || '';
+            el.appendChild(initials);
+          }
+          break;
+        }
+        case 'callout': {
+          el.classList.add('callout');
+          el.setAttribute('data-variant', node.variant || 'info');
+          if (node.title) {
+            const t = document.createElement('div');
+            t.classList.add('callout-title');
+            t.textContent = node.title;
+            el.appendChild(t);
+          }
+          (node.children || []).forEach(child => {
+            el.appendChild(renderWidget(child));
+          });
+          break;
+        }
+        case 'skeleton': {
+          el.classList.add('skeleton');
+          if (node.width) el.style.width = node.width;
+          if (node.height) el.style.height = node.height;
+          break;
+        }
+        case 'expandable': {
+          el.classList.add('expandable');
+          const expanded = !!node.expanded;
+          el.setAttribute('data-expanded', expanded ? 'true' : 'false');
+          const header = document.createElement('button');
+          header.setAttribute('data-expandable-header', 'true');
+          header.textContent = node.title || '';
+          if (node.hasOnToggle && node.id) {
+            header.addEventListener('click', () => {
+              sendEvent(node.id, 'toggle', { value: !expanded });
+            });
+          }
+          el.appendChild(header);
+          const body = document.createElement('div');
+          body.setAttribute('data-expandable-body', 'true');
+          if (!expanded) body.style.display = 'none';
+          (node.children || []).forEach(child => {
+            body.appendChild(renderWidget(child));
+          });
+          el.appendChild(body);
+          break;
+        }
+        case 'list': {
+          el.classList.add('list');
+          (node.items || []).forEach(item => {
+            el.appendChild(renderWidget(item));
+          });
+          break;
+        }
+        case 'list_item': {
+          el.classList.add('list-item');
+          if (node.icon) {
+            const icon = document.createElement('span');
+            icon.setAttribute('data-icon-name', node.icon);
+            icon.textContent = node.icon;
+            el.appendChild(icon);
+          }
+          const title = document.createElement('span');
+          title.setAttribute('data-list-item-title', 'true');
+          title.textContent = node.title || '';
+          el.appendChild(title);
+          if (node.subtitle) {
+            const sub = document.createElement('span');
+            sub.setAttribute('data-list-item-subtitle', 'true');
+            sub.textContent = node.subtitle;
+            el.appendChild(sub);
+          }
+          if (node.hasOnClick && node.id) {
+            el.style.cursor = 'pointer';
+            el.addEventListener('click', () => sendEvent(node.id, 'click', {}));
+          }
+          break;
+        }
+        case 'text_area': {
+          if (node.label) {
+            const lbl = document.createElement('span');
+            lbl.classList.add('field-label');
+            lbl.textContent = node.label;
+          break;
+        }
+        case 'image': {
+          const img = document.createElement('img');
+          img.src = node.src || '';
+          img.alt = node.alt || '';
+          if (node.width) img.style.width = node.width;
+          if (node.height) img.style.height = node.height;
+          el.appendChild(img);
+          break;
+        }
+        case 'avatar': {
+          el.classList.add('avatar');
+          el.setAttribute('data-size', node.size || 'normal');
+          if (node.image) {
+            const img = document.createElement('img');
+            img.src = node.image;
+            img.alt = node.fallback || '';
+            el.appendChild(img);
+          } else {
+            const initials = document.createElement('span');
+            initials.setAttribute('data-fallback', 'true');
+            initials.textContent = node.fallback || '';
+            el.appendChild(initials);
+          }
+          break;
+        }
+        case 'callout': {
+          el.classList.add('callout');
+          el.setAttribute('data-variant', node.variant || 'info');
+          if (node.title) {
+            const t = document.createElement('div');
+            t.classList.add('callout-title');
+            t.textContent = node.title;
+            el.appendChild(t);
+          }
+          (node.children || []).forEach(child => {
+            el.appendChild(renderWidget(child));
+          });
+          break;
+        }
+        case 'skeleton': {
+          el.classList.add('skeleton');
+          if (node.width) el.style.width = node.width;
+          if (node.height) el.style.height = node.height;
+          break;
+        }
+        case 'expandable': {
+          el.classList.add('expandable');
+          const expanded = !!node.expanded;
+          el.setAttribute('data-expanded', expanded ? 'true' : 'false');
+          const header = document.createElement('button');
+          header.setAttribute('data-expandable-header', 'true');
+          header.textContent = node.title || '';
+          if (node.hasOnToggle && node.id) {
+            header.addEventListener('click', () => {
+              sendEvent(node.id, 'toggle', { value: !expanded });
+            });
+          }
+          el.appendChild(header);
+          const body = document.createElement('div');
+          body.setAttribute('data-expandable-body', 'true');
+          if (!expanded) body.style.display = 'none';
+          (node.children || []).forEach(child => {
+            body.appendChild(renderWidget(child));
+          });
+          el.appendChild(body);
+          break;
+        }
+        case 'list': {
+          el.classList.add('list');
+          (node.items || []).forEach(item => {
+            el.appendChild(renderWidget(item));
+          });
+          break;
+        }
+        case 'list_item': {
+          el.classList.add('list-item');
+          if (node.icon) {
+            const icon = document.createElement('span');
+            icon.setAttribute('data-icon-name', node.icon);
+            icon.textContent = node.icon;
+            el.appendChild(icon);
+          }
+          const title = document.createElement('span');
+          title.setAttribute('data-list-item-title', 'true');
+          title.textContent = node.title || '';
+          el.appendChild(title);
+          if (node.subtitle) {
+            const sub = document.createElement('span');
+            sub.setAttribute('data-list-item-subtitle', 'true');
+            sub.textContent = node.subtitle;
+            el.appendChild(sub);
+          }
+          if (node.hasOnClick && node.id) {
+            el.style.cursor = 'pointer';
+            el.addEventListener('click', () => sendEvent(node.id, 'click', {}));
+          }
+          break;
+        }
+        case 'text_area': {
+          if (node.label) {
+            const lbl = document.createElement('span');
+            lbl.classList.add('field-label');
+            lbl.textContent = node.label;
+            el.appendChild(lbl);
+          }
+          const area = document.createElement('textarea');
+          area.value = node.value || '';
+          area.placeholder = node.placeholder || '';
+          if (node.rows != null) area.rows = node.rows;
+          if (node.disabled) area.disabled = true;
+          if (node.hasOnChange && node.id) {
+            area.addEventListener('input', (e) => {
+              sendEvent(node.id, 'change', { value: e.target.value });
+            });
+          }
+          el.appendChild(area);
+          break;
+        }
+        case 'slider': {
+          if (node.label) {
+            const lbl = document.createElement('span');
+            lbl.classList.add('field-label');
+            lbl.textContent = node.label;
+            el.appendChild(lbl);
+          }
+          const input = document.createElement('input');
+          input.type = 'range';
+          input.min = String(node.min == null ? 0 : node.min);
+          input.max = String(node.max == null ? 100 : node.max);
+          if (node.step != null) input.step = String(node.step);
+          input.value = String(node.value == null ? 0 : node.value);
+          if (node.disabled) input.disabled = true;
+          if (node.hasOnChange && node.id) {
+            input.addEventListener('input', (e) => {
+              sendEvent(node.id, 'change', { value: parseFloat(e.target.value) || 0 });
+            });
+          }
+          el.appendChild(input);
+          break;
+        }
+        case 'date_input': {
+          if (node.label) {
+            const lbl = document.createElement('span');
+            lbl.classList.add('field-label');
+            lbl.textContent = node.label;
+            el.appendChild(lbl);
+          }
+          const input = document.createElement('input');
+          input.type = 'date';
+          if (node.value) input.value = node.value;
+          if (node.min) input.min = node.min;
+          if (node.max) input.max = node.max;
+          if (node.disabled) input.disabled = true;
+          if (node.hasOnChange && node.id) {
+            input.addEventListener('change', (e) => {
+              sendEvent(node.id, 'change', { value: e.target.value });
+            });
+          }
+          el.appendChild(input);
+          break;
+        }
+        case 'color_input': {
+          if (node.label) {
+            const lbl = document.createElement('span');
+            lbl.classList.add('field-label');
+            lbl.textContent = node.label;
+            el.appendChild(lbl);
+          }
+          const input = document.createElement('input');
+          input.type = 'color';
+          if (node.value) input.value = node.value;
+          if (node.disabled) input.disabled = true;
+          if (node.hasOnChange && node.id) {
+            input.addEventListener('input', (e) => {
+              sendEvent(node.id, 'change', { value: e.target.value });
+            });
+          }
+          el.appendChild(input);
+          break;
+        }
+        case 'radio_group': {
+          el.setAttribute('data-orientation', node.orientation || 'vertical');
+          if (node.label) {
+            const lbl = document.createElement('span');
+            lbl.classList.add('field-label');
+            lbl.textContent = node.label;
+            el.appendChild(lbl);
+          }
+          const group = document.createElement('div');
+          group.classList.add('radio-group');
+          // A shared `name` is what makes the buttons mutually exclusive; the
+          // widget id is unique per render so it is the natural group key.
+          const groupName = node.id || 'radio-group';
+          (node.options || []).forEach(o => {
+            const label = document.createElement('label');
+            label.classList.add('checkbox-label');
+            const input = document.createElement('input');
+            input.type = 'radio';
+            input.name = groupName;
+            input.value = o.value;
+            if (o.value === node.value) input.checked = true;
+            if (node.disabled) input.disabled = true;
+            if (node.hasOnChange && node.id) {
+              input.addEventListener('change', () => {
+                sendEvent(node.id, 'change', { value: o.value });
+              });
+            }
+            label.appendChild(input);
+            const span = document.createElement('span');
+            span.textContent = o.label;
+            label.appendChild(span);
+            group.appendChild(label);
+          });
+          el.appendChild(group);
+          break;
+        }
+        case 'multi_select': {
+          if (node.label) {
+            const lbl = document.createElement('span');
+            lbl.classList.add('field-label');
+            lbl.textContent = node.label;
+            el.appendChild(lbl);
+          }
+          const select = document.createElement('select');
+          select.multiple = true;
+          const values = node.values || [];
+          (node.options || []).forEach(o => {
+            const opt = document.createElement('option');
+            opt.value = o.value;
+            opt.textContent = o.label;
+            if (values.includes(o.value)) opt.selected = true;
+            select.appendChild(opt);
+          });
+          if (node.disabled) select.disabled = true;
+          if (node.hasOnChange && node.id) {
+            select.addEventListener('change', (e) => {
+              // MultiSelect expects every selection as an array under `value`.
+              const selected = Array.from(e.target.selectedOptions).map(o => o.value);
+              sendEvent(node.id, 'change', { value: selected });
+            });
+          }
+          el.appendChild(select);
           break;
         }
         default: {

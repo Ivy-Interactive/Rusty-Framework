@@ -10,6 +10,10 @@ struct Cli {
     #[arg(short, long, env = "PORT", default_value = "3000")]
     port: u16,
 
+    /// Address to bind to. Defaults to loopback; pass 0.0.0.0 to expose on the network.
+    #[arg(long, default_value = DEFAULT_BIND_ADDRESS, env = "HOST")]
+    host: String,
+
     /// Directory to serve static files from
     #[arg(short, long)]
     static_dir: Option<PathBuf>,
@@ -43,5 +47,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         server
     };
 
-    server.serve().await
+    server.with_bind_address(cli.host).serve().await
 }

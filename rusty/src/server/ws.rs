@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 use uuid::Uuid;
 
 use crate::core::runtime::RuntimeMessage;
@@ -36,6 +35,9 @@ pub enum ClientMessage {
     Navigate {
         #[serde(rename = "appId")]
         app_id: String,
+        /// Optional navigation state. A bare `{"method":"navigate","appId":"x"}`
+        /// must still deserialize instead of being silently dropped.
+        #[serde(default)]
         state: serde_json::Value,
     },
 }
@@ -52,6 +54,11 @@ pub enum ServerMessage {
     },
 }
 
+/// Loopback-only default: a dev server or test harness should not be reachable
+/// from the local network. Callers that need external access opt in explicitly
+/// via [`RustyServer::with_bind_address`].
+pub const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1";
+
 /// Application state shared across WebSocket connections.
 pub struct AppState {
     pub session_store: AppSessionStore,
@@ -60,6 +67,7 @@ pub struct AppState {
 /// The Rusty WebSocket server for frontend communication.
 pub struct RustyServer {
     port: u16,
+    bind_address: String,
     root_view: Box<dyn Fn() -> Box<dyn View> + Send + Sync>,
     static_dir: Option<PathBuf>,
 }
@@ -72,9 +80,18 @@ impl RustyServer {
     {
         RustyServer {
             port,
+            bind_address: DEFAULT_BIND_ADDRESS.to_string(),
             root_view: Box::new(move || Box::new(root_factory())),
             static_dir: None,
         }
+    }
+
+    /// Bind to a specific address instead of the loopback default.
+    ///
+    /// Pass `"0.0.0.0"` to accept connections from any interface.
+    pub fn with_bind_address(mut self, address: impl Into<String>) -> Self {
+        self.bind_address = address.into();
+        self
     }
 
     /// Serve static files from the given directory at `/`.
@@ -111,7 +128,7 @@ impl RustyServer {
     /// Start the server and listen for connections.
     /// Returns the actual bound address (useful when port is 0).
     pub async fn serve(self) -> Result<(), Box<dyn std::error::Error>> {
-        let addr = format!("0.0.0.0:{}", self.port);
+        let addr = format!("{}:{}", self.bind_address, self.port);
         let router = self.router();
         let listener = tokio::net::TcpListener::bind(&addr).await?;
         let local_addr = listener.local_addr()?;
@@ -124,7 +141,7 @@ impl RustyServer {
     /// Start the server and return the bound address without blocking.
     /// Useful for testing — spawns the server on a background task.
     pub async fn serve_background(self) -> Result<SocketAddr, Box<dyn std::error::Error>> {
-        let addr = format!("0.0.0.0:{}", self.port);
+        let addr = format!("{}:{}", self.bind_address, self.port);
         let router = self.router();
         let listener = tokio::net::TcpListener::bind(&addr).await?;
         let local_addr = listener.local_addr()?;
@@ -223,11 +240,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     }
     let event_tx = session_arc.read().await.runtime.event_sender();
 
-    // Poll for rebuilds triggered outside the request path (async hooks resolving,
-    // spawned tasks calling State::set). The rebuild channel lives inside the
-    // Runtime, so a notification-based push would mean exposing it; 50 ms is
-    // imperceptible to a user.
-    let mut push_ticker = tokio::time::interval(Duration::from_millis(50));
+    // Woken when a rebuild is queued outside the request path (async hooks
+    // resolving, spawned tasks calling State::set). No polling: the task parks
+    // until a producer actually signals.
+    let rebuild_notify = session_arc.read().await.runtime.rebuild_notifier();
 
     // Process incoming messages using this session's isolated runtime
     loop {
@@ -235,8 +251,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             msg = receiver.next() => {
                 match msg {
                     Some(Ok(Message::Text(text))) => {
-                        if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
-                            match client_msg {
+                        match serde_json::from_str::<ClientMessage>(&text) {
+                            Err(err) => {
+                                tracing::warn!("Ignoring unparseable client message: {err}");
+                            }
+                            Ok(client_msg) => match client_msg {
                                 ClientMessage::Event {
                                     widget_id,
                                     event_name,
@@ -268,14 +287,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 ClientMessage::Navigate { .. } => {
                                     // Navigation handling (future)
                                 }
-                            }
+                            },
                         }
                     }
                     Some(Ok(_)) => {} // Ignore non-text messages
                     _ => break, // Connection closed or error
                 }
             }
-            _ = push_ticker.tick() => {
+            _ = rebuild_notify.notified() => {
                 let mut session = session_arc.write().await;
                 if session.runtime.process_pending().await {
                     if let Some(tree) = session.runtime.current_tree().await {
@@ -298,4 +317,79 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
     // Clean up session on disconnect
     state.session_store.remove_session(&connection_id).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::widgets::TextBlock;
+
+    struct Probe;
+
+    impl crate::views::view::View for Probe {
+        fn build(
+            &self,
+            _ctx: &mut crate::views::view::BuildContext,
+        ) -> crate::views::view::Element {
+            TextBlock::new("probe").into()
+        }
+    }
+
+    #[tokio::test]
+    async fn serve_background_binds_loopback_by_default() {
+        let addr = RustyServer::new(0, || Probe)
+            .serve_background()
+            .await
+            .expect("bind");
+        assert_eq!(addr.ip(), std::net::Ipv4Addr::LOCALHOST);
+    }
+
+    #[tokio::test]
+    async fn with_bind_address_overrides_the_default() {
+        let addr = RustyServer::new(0, || Probe)
+            .with_bind_address("0.0.0.0")
+            .serve_background()
+            .await
+            .expect("bind");
+        assert_eq!(addr.ip(), std::net::Ipv4Addr::UNSPECIFIED);
+    }
+
+    #[test]
+    fn navigate_deserializes_without_state() {
+        let msg: ClientMessage =
+            serde_json::from_str(r#"{"method":"navigate","appId":"reports"}"#).unwrap();
+        match msg {
+            ClientMessage::Navigate { app_id, state } => {
+                assert_eq!(app_id, "reports");
+                assert_eq!(state, serde_json::Value::Null);
+            }
+            other => panic!("expected Navigate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn navigate_still_deserializes_with_state() {
+        let msg: ClientMessage =
+            serde_json::from_str(r#"{"method":"navigate","appId":"reports","state":{"page":2}}"#)
+                .unwrap();
+        match msg {
+            ClientMessage::Navigate { app_id, state } => {
+                assert_eq!(app_id, "reports");
+                assert_eq!(state["page"], 2);
+            }
+            other => panic!("expected Navigate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn event_still_requires_all_fields() {
+        assert!(serde_json::from_str::<ClientMessage>(
+            r#"{"method":"event","widgetId":"btn-1","eventName":"click","args":[]}"#
+        )
+        .is_ok());
+        assert!(serde_json::from_str::<ClientMessage>(
+            r#"{"method":"event","widgetId":"btn-1","eventName":"click"}"#
+        )
+        .is_err());
+    }
 }

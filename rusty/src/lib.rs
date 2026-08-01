@@ -17,7 +17,7 @@ pub mod prelude {
         use_mutation, use_query, use_reducer, use_ref, use_service, use_signal, use_state,
         use_trigger, use_trigger_unit, DynEq, QueryMutator, QueryResult, Ref, ShowAlert, State,
     };
-    pub use crate::server::RustyServer;
+    pub use crate::server::{RustyServer, DEFAULT_BIND_ADDRESS};
     pub use crate::shared::{Align, Color, Density, Icon, Justify, NamedColor, Size};
     pub use crate::views::{
         AlertButtonSet, AlertResult, BuildContext, Element, FieldRender, FormBuilder, ModelSetter,
