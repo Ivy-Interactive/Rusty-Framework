@@ -96,6 +96,8 @@ For Rust files, the hook runs `rustfmt --edition 2021 --config skip_children=tru
 
 Hooks are installed automatically by the `prepare` script when you run `pnpm install` in `src/frontend`. Ideally, you would not then need to run any formatting or lint commands as it will be done for you. In case you want to manually run them, you still can.
 
+**`core.hooksPath` is not configurable here.** The `prepare` script runs husky's installer, which sets `core.hooksPath` to `src/frontend/.husky/_` unconditionally — it never checks the current value. If you point `core.hooksPath` somewhere else, the next `pnpm install` in `src/frontend` silently puts it back, with no warning. This is deliberate: it keeps `.husky/pre-commit` the single authoritative hook. To disable hooks for one command use `git commit --no-verify`, or set `HUSKY=0` to skip the install step (`index.js` returns early on `HUSKY=0`).
+
 ### Code Formatting
 
 Format all files with Oxfmt using the Vite+ CLI:
