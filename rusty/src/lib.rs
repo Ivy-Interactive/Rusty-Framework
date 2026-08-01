@@ -7,14 +7,22 @@ pub mod widgets;
 
 /// Prelude module for convenient imports.
 pub mod prelude {
-    pub use crate::core::{Runtime, ViewTree};
+    pub use crate::core::{
+        AppDescriptor, AppFactory, AppIds, AppRegistry, QueryError, QueryOptions, QueryScope,
+        Runtime, ServiceRegistry, Signal, SignalScope, ViewTree,
+    };
     pub use crate::hooks::{
-        create_context, use_callback, use_context, use_effect, use_effect_with_deps, use_interval,
-        use_memo, use_reducer, use_ref, use_state, DynEq, Ref, State,
+        create_context, try_use_service, use_alert, use_callback, use_context, use_download,
+        use_download_bytes, use_effect, use_effect_with_deps, use_form, use_interval, use_memo,
+        use_mutation, use_query, use_reducer, use_ref, use_service, use_signal, use_state,
+        use_trigger, use_trigger_unit, DynEq, QueryMutator, QueryResult, Ref, ShowAlert, State,
     };
     pub use crate::server::RustyServer;
     pub use crate::shared::{Align, Color, Density, Icon, Justify, NamedColor, Size};
-    pub use crate::views::{BuildContext, Element, View};
+    pub use crate::views::{
+        AlertButtonSet, AlertResult, BuildContext, Element, FieldRender, FormBuilder, ModelSetter,
+        SubmitHandler, Validator, View,
+    };
     pub use crate::widgets::*;
 }
 

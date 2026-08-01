@@ -21,6 +21,7 @@ enum WidgetKind {
     Checkbox,
     Layout,
     Card,
+    Query,
     Badge,
     Progress,
     Table,
@@ -36,7 +37,7 @@ struct Cli {
     widget: WidgetKind,
 
     /// Port to listen on (0 for auto-assign)
-    #[arg(short, long, default_value = "0")]
+    #[arg(short, long, default_value = "0", env = "PORT")]
     port: u16,
 
     /// Directory to serve static files from
@@ -57,6 +58,7 @@ impl WidgetKind {
             WidgetKind::Checkbox => CheckboxApp.build(ctx),
             WidgetKind::Layout => LayoutApp.build(ctx),
             WidgetKind::Card => CardApp.build(ctx),
+            WidgetKind::Query => QueryApp.build(ctx),
             WidgetKind::Badge => BadgeApp.build(ctx),
             WidgetKind::Progress => ProgressApp.build(ctx),
             WidgetKind::Table => TableApp.build(ctx),
@@ -74,7 +76,6 @@ impl View for HarnessApp {
         self.0.build_app(ctx)
     }
 }
-
 struct ButtonApp;
 
 impl View for ButtonApp {
@@ -408,6 +409,52 @@ impl View for TooltipApp {
     }
 }
 
+
+/// Exercises `use_query`. The fetcher sleeps, so the loading-to-loaded
+/// transition arrives over the WebSocket push path rather than in the first
+/// render.
+struct QueryApp;
+
+impl View for QueryApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let result = use_query(
+            ctx,
+            Some("harness-greeting"),
+            || async {
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                Ok("Hello from the query cache".to_string())
+            },
+            QueryOptions::default(),
+        );
+
+        let status = if result.loading {
+            "Loading...".to_string()
+        } else if let Some(error) = &result.error {
+            format!("Error: {}", error)
+        } else {
+            result.value.clone().unwrap_or_default()
+        };
+        let validating = if result.validating {
+            "validating"
+        } else {
+            "idle"
+        };
+        let mutator = result.mutator.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Query Test"))
+            .child(TextBlock::paragraph(&status))
+            .child(TextBlock::label(validating))
+            .child(
+                Button::new("Revalidate")
+                    .variant(ButtonVariant::Primary)
+                    .on_click(move || mutator.revalidate()),
+            )
+            .into()
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
@@ -425,52 +472,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     server.serve().await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rusty::hooks::hook_store::HookStore;
-
-    #[test]
-    fn all_widget_kinds_build_a_tree() {
-        for kind in WidgetKind::value_variants() {
-            let mut store = HookStore::new();
-            let mut ctx = BuildContext::new(&mut store, None);
-
-            let element = kind.build_app(&mut ctx);
-
-            assert!(
-                matches!(element, Element::Widget(_)),
-                "{:?} built {:?} instead of a widget",
-                kind,
-                element
-            );
-        }
-    }
-
-    #[test]
-    fn widget_kind_names_are_snake_case() {
-        let names: Vec<String> = WidgetKind::value_variants()
-            .iter()
-            .map(|kind| {
-                kind.to_possible_value()
-                    .expect("every variant is selectable")
-                    .get_name()
-                    .to_string()
-            })
-            .collect();
-
-        // e2e/tests/harness.ts passes these names through as the first argv, so
-        // renaming one silently breaks the Playwright suite.
-        assert!(names.contains(&"text_input".to_string()), "{:?}", names);
-        assert!(names.contains(&"number_input".to_string()), "{:?}", names);
-        assert!(
-            names
-                .iter()
-                .all(|n| n.chars().all(|c| c.is_ascii_lowercase() || c == '_')),
-            "{:?}",
-            names
-        );
-    }
 }

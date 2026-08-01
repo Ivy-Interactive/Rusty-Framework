@@ -15,6 +15,13 @@ Hooks let you add state and side effects to views. They must be called in the sa
 | `use_reducer` | Dispatch-based state management |
 | `use_interval` | Run a callback on a timer |
 | `use_context` / `create_context` | Dependency injection through the view tree |
+| `use_service` | Resolve a registered service by type |
+| `use_query` | Fetch and cache data, revalidating stale entries in the background |
+| `use_mutation` | Mutate, revalidate or invalidate a cached query from outside it |
+| `use_signal` | Send and receive messages between views, per session or server-wide |
+| `use_download` | Register a download and get the URL to serve it from |
+| `use_alert` | Show a modal alert and get the user's answer in a callback |
+| `use_trigger` | Render an element on demand, carrying a value to its factory |
 
 ### Usage Pattern
 
