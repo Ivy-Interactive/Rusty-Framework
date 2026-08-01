@@ -12,9 +12,27 @@
       "enabled": false
     },
     {
+      "description": "npm: one grouped PR weekly. Must NOT carry matchUpdateTypes - rules apply at pre-lookup, before updateType is known, so a conditional rule never clears the wildcard disable above. Must stay BEFORE the vite-plus rule: packageRules is last-match-wins, so an npm group placed after it absorbs the trio and destroys its lockstep grouping.",
+      "groupName": "npm dependencies",
+      "matchManagers": ["npm"],
+      "enabled": true,
+      "schedule": ["before 6am on monday"]
+    },
+    {
       "groupName": "vite-plus toolchain",
       "matchPackageNames": ["vite-plus", "@voidzero-dev/vite-plus-core", "vitest"],
       "enabled": true
+    },
+    {
+      "description": "npm majors and the framer-motion -> motion rename stay parked; they surface on the Dependency Dashboard. Narrows the npm rule above; must stay after it.",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["major", "replacement"],
+      "enabled": false
+    },
+    {
+      "description": "npm semver sorts the prerelease tag 6.0.4-alpha9 AFTER 6.0.4-alpha24 as a string, so Renovate offers alpha24 -> alpha9 as a patch. That is a 501-day downgrade; a rollback guard does not catch it because the updateType is patch.",
+      "matchPackageNames": ["@glideapps/glide-data-grid"],
+      "enabled": false
     }
   ]
 }

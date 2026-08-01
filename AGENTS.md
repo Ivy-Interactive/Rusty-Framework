@@ -49,6 +49,19 @@ install https://github.com/apps/renovate or delete `renovate.json`. Do not
 leave it as decoration — `Ivy-Web/.github/renovate.json` has sat inert since a
 2024-03 `create-turbo` scaffold and has never opened a single PR. To check what `renovate.json` would actually do, see "Probing renovate.json" under `## CI` - the dry-run needs `GITHUB_COM_TOKEN` or it silently reports no GitHub Actions updates.
 
+Beyond the vite-plus trio, `renovate.json` groups the remaining 117 npm entries
+(86 dependencies + 21 devDependencies + 10 pnpm.overrides in `src/frontend/package.json`,
+plus 1 devDependency in `e2e/package.json`) into a single weekly PR on Mondays.
+Minor and patch updates ship in that group; majors and the `framer-motion` → `motion`
+package rename appear only on the Dependency Dashboard. `@glideapps/glide-data-grid`
+is pinned because its prerelease tags (alpha24, alpha9, alpha3…) sort backwards as strings,
+so Renovate would offer `6.0.4-alpha24 → 6.0.4-alpha9` as a patch — a 501-day downgrade.
+**The npm group rule must stay before the vite-plus rule** in `packageRules`: the array is
+last-match-wins, so placing the npm group after the trio absorbs all five vite-plus entries
+into the npm group and breaks their lockstep. Grouping is not optional — without it Renovate
+opens 36 PRs, and it splits `pnpm.overrides` mirrors (e.g. `mermaid` and
+`remark-mermaid-plugin>mermaid`) into separate branches even when they're the same version.
+
 Git hooks are husky (`.husky/pre-commit` + `package.json`'s `lint-staged`). Vite+'s `vp staged` / `staged` config is intentionally unused — do not run `vp config`, which would install a competing `.vite-hooks` tree.
 
 ## CI
