@@ -50,11 +50,19 @@ Git hooks are husky (`.husky/pre-commit` + `package.json`'s `lint-staged`). Vite
 on every push to `main` and every PR. All four report independently — a failure in one
 does not skip the rest.
 
-`main` has no branch protection and no rulesets, so a PR can be (and routinely is)
-merged before its check run finishes. Between 19:15Z and 20:52Z on 2026-08-01,
-11 of 11 PRs merged 10-74s ahead of their result and nine of them were red. Until a
-required status check is configured, read the PR's check result before merging
-(`gh pr checks <n> --watch`) rather than assuming a green PR page means a green build.
+`main` has no branch protection and no rulesets:
+
+```bash
+gh api repos/Ivy-Interactive/Rusty-Framework/branches/main/protection  # 404
+gh api repos/Ivy-Interactive/Rusty-Framework/rulesets                  # []
+```
+
+**20 of 20 PRs (#27-#46) on 2026-08-01 merged 13-74s before their last check finished.**
+Agents merge with `gh pr merge --merge --admin` immediately after opening the PR, so the
+check result arrives after the merge and nothing reads it. A required status check alone
+will not stop this: `--admin` bypasses requirements for admins. The fix needs
+**`enforce_admins: true`** to block merges while checks are pending. Run
+`.github/protect-main.sh` (requires repo ADMIN) to configure protection on `main`.
 
 `cargo fmt --all -- --check` needs a prior `cargo build`: `rusty-docs/src/generated/`
 is gitignored and emitted by `rusty-docs/build.rs`, so rustfmt fails to resolve
