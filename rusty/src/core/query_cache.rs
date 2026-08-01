@@ -418,6 +418,18 @@ impl QueryService {
         }
     }
 
+    /// Replace an entry's fetcher without touching its state.
+    ///
+    /// A hook rebuilds its fetcher closure every render, capturing whatever the
+    /// view read this time; without this the entry would keep revalidating through
+    /// the closure captured on the first render.
+    pub fn set_fetcher(&self, key: &str, fetcher: ErasedFetcher) {
+        let mut cache = self.cache.lock().unwrap();
+        if let Some(entry) = cache.get_mut(key) {
+            entry.fetcher = Some(fetcher);
+        }
+    }
+
     /// Register (or replace) a subscriber callback for an already-subscribed id.
     ///
     /// Split out from `subscribe` because a hook builds its callback around the
@@ -783,10 +795,13 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    /// One recorded notification: the downcast value, the state and any error.
+    type Notification = (Option<String>, QueryEntryState, Option<QueryError>);
+
     /// Records every notification a subscriber receives.
     #[derive(Default)]
     struct Recorder {
-        notifications: Mutex<Vec<(Option<String>, QueryEntryState, Option<QueryError>)>>,
+        notifications: Mutex<Vec<Notification>>,
     }
 
     impl Recorder {
@@ -1128,7 +1143,7 @@ mod tests {
         assert_eq!(service.peek::<String>("k").as_deref(), Some("good"));
 
         // Swap in a failing fetcher and force a revalidation.
-        service.set_fetcher_for_test("k", failing_fetcher("boom"));
+        service.set_fetcher("k", failing_fetcher("boom"));
         service.revalidate("k");
         settle().await;
 
@@ -1540,17 +1555,5 @@ mod tests {
         assert_eq!(service.entry_state("a"), Some(QueryEntryState::Empty));
         assert_eq!(service.entry_state("b"), Some(QueryEntryState::Empty));
         assert_eq!(service.peek::<String>("a"), None);
-    }
-}
-
-#[cfg(test)]
-impl QueryService {
-    /// Replace an entry's fetcher. Test-only: production code always supplies the
-    /// fetcher through `subscribe`.
-    fn set_fetcher_for_test(&self, key: &str, fetcher: ErasedFetcher) {
-        let mut cache = self.cache.lock().unwrap();
-        if let Some(entry) = cache.get_mut(key) {
-            entry.fetcher = Some(fetcher);
-        }
     }
 }
