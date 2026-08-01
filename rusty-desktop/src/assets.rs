@@ -40,8 +40,51 @@ mod tests {
     #[test]
     fn index_html_script_is_well_formed() {
         // The renderer is one inline <script>; a duplicated closing tag from a bad merge
-        // throws no page error, it just silently truncates the script.
+        // throws no page error, it just silently truncates the script — the browser ends
+        // the script at the FIRST close tag and every case arm after it goes dead. The
+        // same invariants guard the e2e original in
+        // `rusty-server/tests/harness_client_is_loadable.rs`; this copy needs its own
+        // check because nothing else loads it in a browser.
         assert_eq!(INDEX_HTML.matches("<script").count(), 1);
         assert_eq!(INDEX_HTML.matches("</script>").count(), 1);
+    }
+
+    #[test]
+    fn index_html_switch_has_no_duplicate_case_labels() {
+        // A merge conflict resolved by keeping both sides duplicates a block of arms; the
+        // second copy is unreachable, so a widget silently stops rendering.
+        let body = script_body(INDEX_HTML);
+        let mut labels: Vec<&str> = Vec::new();
+        let mut rest = body;
+        while let Some(index) = rest.find("case '") {
+            rest = &rest[index + "case '".len()..];
+            if let Some(end) = rest.find("':") {
+                labels.push(&rest[..end]);
+            }
+        }
+        assert!(!labels.is_empty(), "no case labels found — bad parse");
+
+        let mut duplicates: Vec<&str> = labels
+            .iter()
+            .filter(|label| labels.iter().filter(|other| other == label).count() > 1)
+            .copied()
+            .collect();
+        duplicates.sort_unstable();
+        duplicates.dedup();
+        assert!(
+            duplicates.is_empty(),
+            "duplicate case labels: {}",
+            duplicates.join(", ")
+        );
+    }
+
+    /// The contents of the single inline `<script>`.
+    fn script_body(html: &str) -> &str {
+        let open_end = html.find("<script>").expect("no <script> tag") + "<script>".len();
+        let close = html[open_end..]
+            .find("</script>")
+            .expect("unterminated <script>")
+            + open_end;
+        &html[open_end..close]
     }
 }
