@@ -40,6 +40,10 @@ struct Cli {
     #[arg(short, long, default_value = "0", env = "PORT")]
     port: u16,
 
+    /// Address to bind to. Defaults to loopback; pass 0.0.0.0 to expose on the network.
+    #[arg(long, default_value = DEFAULT_BIND_ADDRESS, env = "HOST")]
+    host: String,
+
     /// Directory to serve static files from
     #[arg(short, long)]
     static_dir: Option<PathBuf>,
@@ -409,7 +413,6 @@ impl View for TooltipApp {
     }
 }
 
-
 /// Exercises `use_query`. The fetcher sleeps, so the loading-to-loaded
 /// transition arrives over the WebSocket push path rather than in the first
 /// render.
@@ -471,5 +474,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         server
     };
 
-    server.serve().await
+    server.with_bind_address(cli.host).serve().await
 }

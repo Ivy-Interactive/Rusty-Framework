@@ -52,6 +52,11 @@ pub enum ServerMessage {
     },
 }
 
+/// Loopback-only default: a dev server or test harness should not be reachable
+/// from the local network. Callers that need external access opt in explicitly
+/// via [`RustyServer::with_bind_address`].
+pub const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1";
+
 /// Application state shared across WebSocket connections.
 pub struct AppState {
     pub session_store: AppSessionStore,
@@ -60,6 +65,7 @@ pub struct AppState {
 /// The Rusty WebSocket server for frontend communication.
 pub struct RustyServer {
     port: u16,
+    bind_address: String,
     root_view: Box<dyn Fn() -> Box<dyn View> + Send + Sync>,
     static_dir: Option<PathBuf>,
 }
@@ -72,9 +78,18 @@ impl RustyServer {
     {
         RustyServer {
             port,
+            bind_address: DEFAULT_BIND_ADDRESS.to_string(),
             root_view: Box::new(move || Box::new(root_factory())),
             static_dir: None,
         }
+    }
+
+    /// Bind to a specific address instead of the loopback default.
+    ///
+    /// Pass `"0.0.0.0"` to accept connections from any interface.
+    pub fn with_bind_address(mut self, address: impl Into<String>) -> Self {
+        self.bind_address = address.into();
+        self
     }
 
     /// Serve static files from the given directory at `/`.
@@ -111,7 +126,7 @@ impl RustyServer {
     /// Start the server and listen for connections.
     /// Returns the actual bound address (useful when port is 0).
     pub async fn serve(self) -> Result<(), Box<dyn std::error::Error>> {
-        let addr = format!("0.0.0.0:{}", self.port);
+        let addr = format!("{}:{}", self.bind_address, self.port);
         let router = self.router();
         let listener = tokio::net::TcpListener::bind(&addr).await?;
         let local_addr = listener.local_addr()?;
@@ -124,7 +139,7 @@ impl RustyServer {
     /// Start the server and return the bound address without blocking.
     /// Useful for testing — spawns the server on a background task.
     pub async fn serve_background(self) -> Result<SocketAddr, Box<dyn std::error::Error>> {
-        let addr = format!("0.0.0.0:{}", self.port);
+        let addr = format!("{}:{}", self.bind_address, self.port);
         let router = self.router();
         let listener = tokio::net::TcpListener::bind(&addr).await?;
         let local_addr = listener.local_addr()?;
@@ -298,4 +313,40 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
     // Clean up session on disconnect
     state.session_store.remove_session(&connection_id).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::views::TextBlock;
+
+    struct Probe;
+
+    impl crate::views::view::View for Probe {
+        fn build(
+            &self,
+            _ctx: &mut crate::views::view::BuildContext,
+        ) -> crate::views::view::Element {
+            TextBlock::new("probe").into()
+        }
+    }
+
+    #[tokio::test]
+    async fn serve_background_binds_loopback_by_default() {
+        let addr = RustyServer::new(0, || Probe)
+            .serve_background()
+            .await
+            .expect("bind");
+        assert_eq!(addr.ip(), std::net::Ipv4Addr::LOCALHOST);
+    }
+
+    #[tokio::test]
+    async fn with_bind_address_overrides_the_default() {
+        let addr = RustyServer::new(0, || Probe)
+            .with_bind_address("0.0.0.0")
+            .serve_background()
+            .await
+            .expect("bind");
+        assert_eq!(addr.ip(), std::net::Ipv4Addr::UNSPECIFIED);
+    }
 }
