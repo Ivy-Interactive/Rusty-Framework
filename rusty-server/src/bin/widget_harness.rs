@@ -1,18 +1,43 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use rusty::prelude::*;
+use rusty::widgets::badge::BadgeVariant;
 use rusty::widgets::button::ButtonVariant;
 use rusty::widgets::input::SelectOption;
+use rusty::widgets::table::Column;
+use serde_json::json;
 use std::path::PathBuf;
+
+/// One variant per widget the harness can serve. The snake_case names are the
+/// contract with `e2e/tests/harness.ts`, which passes them straight through as
+/// the first argv.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+#[value(rename_all = "snake_case")]
+enum WidgetKind {
+    Button,
+    Text,
+    TextInput,
+    NumberInput,
+    Select,
+    Checkbox,
+    Layout,
+    Card,
+    Query,
+    Badge,
+    Progress,
+    Table,
+    Dialog,
+    Tooltip,
+}
 
 #[derive(Parser)]
 #[command(name = "widget_harness")]
 #[command(about = "Launch a minimal Rusty app exercising a single widget for E2E testing")]
 struct Cli {
-    /// Widget to test (button, text, text_input, number_input, select, checkbox, layout, card, query)
-    widget: String,
+    /// Widget to test
+    widget: WidgetKind,
 
     /// Port to listen on (0 for auto-assign)
-    #[arg(short, long, default_value = "0")]
+    #[arg(short, long, default_value = "0", env = "PORT")]
     port: u16,
 
     /// Directory to serve static files from
@@ -20,6 +45,37 @@ struct Cli {
     static_dir: Option<PathBuf>,
 }
 
+impl WidgetKind {
+    /// The single dispatch point from a kind to its sample app. Because the match
+    /// is exhaustive, a variant added without an arm fails to compile.
+    fn build_app(self, ctx: &mut BuildContext) -> Element {
+        match self {
+            WidgetKind::Button => ButtonApp.build(ctx),
+            WidgetKind::Text => TextApp.build(ctx),
+            WidgetKind::TextInput => TextInputApp.build(ctx),
+            WidgetKind::NumberInput => NumberInputApp.build(ctx),
+            WidgetKind::Select => SelectApp.build(ctx),
+            WidgetKind::Checkbox => CheckboxApp.build(ctx),
+            WidgetKind::Layout => LayoutApp.build(ctx),
+            WidgetKind::Card => CardApp.build(ctx),
+            WidgetKind::Query => QueryApp.build(ctx),
+            WidgetKind::Badge => BadgeApp.build(ctx),
+            WidgetKind::Progress => ProgressApp.build(ctx),
+            WidgetKind::Table => TableApp.build(ctx),
+            WidgetKind::Dialog => DialogApp.build(ctx),
+            WidgetKind::Tooltip => TooltipApp.build(ctx),
+        }
+    }
+}
+
+/// The root view the server serves: whichever sample app the kind selects.
+struct HarnessApp(WidgetKind);
+
+impl View for HarnessApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        self.0.build_app(ctx)
+    }
+}
 struct ButtonApp;
 
 impl View for ButtonApp {
@@ -226,6 +282,134 @@ impl View for CardApp {
     }
 }
 
+struct BadgeApp;
+
+impl View for BadgeApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Badge Test"))
+            .child(Badge::new("Default").variant(BadgeVariant::Default))
+            .child(Badge::new("Outline").variant(BadgeVariant::Outline))
+            .child(Badge::new("Dot").variant(BadgeVariant::Dot))
+            .child(Badge::new("Success").color(Color::Named(NamedColor::Success)))
+            .child(Badge::new("Warning").color(Color::Named(NamedColor::Warning)))
+            .child(Badge::new("Danger").color(Color::Named(NamedColor::Danger)))
+            .into()
+    }
+}
+
+struct ProgressApp;
+
+impl View for ProgressApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        // 0.25 steps are exactly representable in binary floating point, so the
+        // readout stays free of 0.30000000000000004-style noise.
+        let value = use_state(ctx, 0.0f64);
+        let value_display = value.get();
+        let value_clone = value.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Progress Test"))
+            .child(Progress::new(0.25))
+            .child(Progress::new(0.75).label("Upload progress"))
+            .child(Progress::indeterminate())
+            .child(Progress::new(50.0).max(200.0))
+            .child(Progress::new(value_display).label("Advancing"))
+            .child(Button::new("Advance").on_click(move || {
+                value_clone.update(|v| (v + 0.25).min(1.0));
+            }))
+            .child(TextBlock::paragraph(&format!("Value: {}", value_display)))
+            .into()
+    }
+}
+
+struct TableApp;
+
+impl View for TableApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        let columns = vec![
+            Column {
+                key: "name".into(),
+                label: "Name".into(),
+                sortable: true,
+            },
+            Column {
+                key: "role".into(),
+                label: "Role".into(),
+                sortable: false,
+            },
+            Column {
+                key: "age".into(),
+                label: "Age".into(),
+                sortable: true,
+            },
+        ];
+
+        let rows = vec![
+            json!({ "name": "Ada", "role": "Engineer", "age": 36 }),
+            json!({ "name": "Grace", "role": "Admiral", "age": 45 }),
+            json!({ "name": "Alan", "role": "Researcher", "age": 41 }),
+        ];
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Table Test"))
+            .child(Table::new(columns.clone()).rows(rows.clone()))
+            .child(Table::new(columns).rows(rows).sort_by("name", true))
+            .into()
+    }
+}
+
+struct DialogApp;
+
+impl View for DialogApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let open = use_state(ctx, false);
+        let open_val = open.get();
+        let open_clone = open.clone();
+        let close_clone = open.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Dialog Test"))
+            .child(Button::new("Open dialog").on_click(move || {
+                open_clone.set(true);
+            }))
+            .child(
+                Dialog::new(open_val)
+                    .title("Confirm action")
+                    .child(TextBlock::paragraph("Are you sure about this?"))
+                    .footer(vec![Button::new("Close")
+                        .variant(ButtonVariant::Secondary)
+                        .on_click(move || {
+                            close_clone.set(false);
+                        })
+                        .into()]),
+            )
+            .child(TextBlock::paragraph(&format!("Open: {}", open_val)))
+            .into()
+    }
+}
+
+struct TooltipApp;
+
+impl View for TooltipApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Tooltip Test"))
+            .child(Tooltip::new("Buttons do things", Button::new("Hover me")))
+            .child(Tooltip::new(
+                "Text can be explained too",
+                TextBlock::paragraph("Hover this text"),
+            ))
+            .into()
+    }
+}
+
+
 /// Exercises `use_query`. The fetcher sleeps, so the loading-to-loaded
 /// transition arrives over the WebSocket push path rather than in the first
 /// render.
@@ -276,27 +460,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     let cli = Cli::parse();
 
-    let widget = cli.widget.as_str();
-    let port = cli.port;
-    let static_dir = cli.static_dir;
+    // clap rejects unknown widget names before we get here, so there is no
+    // unknown-widget arm to write.
+    let widget = cli.widget;
+    let server = RustyServer::new(cli.port, move || HarnessApp(widget));
 
-    let server = match widget {
-        "button" => RustyServer::new(port, || ButtonApp),
-        "text" => RustyServer::new(port, || TextApp),
-        "text_input" => RustyServer::new(port, || TextInputApp),
-        "number_input" => RustyServer::new(port, || NumberInputApp),
-        "select" => RustyServer::new(port, || SelectApp),
-        "checkbox" => RustyServer::new(port, || CheckboxApp),
-        "layout" => RustyServer::new(port, || LayoutApp),
-        "card" => RustyServer::new(port, || CardApp),
-        "query" => RustyServer::new(port, || QueryApp),
-        other => {
-            eprintln!("Unknown widget: {}", other);
-            std::process::exit(1);
-        }
-    };
-
-    let server = if let Some(dir) = static_dir {
+    let server = if let Some(dir) = cli.static_dir {
         server.with_static_dir(dir)
     } else {
         server

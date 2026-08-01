@@ -12,5 +12,5 @@ path = "src/main.rs"
 [dependencies]
 rusty = { path = "../rusty" }
 tokio.workspace = true
-tracing.workspace = true
 tracing-subscriber.workspace = true
+clap.workspace = true

@@ -39,16 +39,16 @@ let my_view = |ctx: &mut BuildContext| -> Element {
 
 ### Child Views
 
-Use `ctx.child_view()` to embed a child view with its own isolated hook store:
+Use `ctx.child_view()` to embed a child view with its own isolated hook store. It returns a 3-tuple of `(Element, ViewId, HookStore)`, so destructure it rather than passing the result straight to `.child()`:
 
 ```rust
 impl View for ParentView {
     fn build(&self, ctx: &mut BuildContext) -> Element {
-        Layout::vertical()
-            .child(ctx.child_view(ChildView, None))
-            .into()
+        let (content, _view_id, _hook_store) = ctx.child_view(ChildView, None);
+
+        Layout::vertical().child(content).into()
     }
 }
 ```
 
-This ensures each child maintains independent state across rebuilds.
+Pass the returned `HookStore` back in as the second argument on the next build to keep the child's state; passing `None` gives it a fresh store. This ensures each child maintains independent state across rebuilds.
