@@ -2,27 +2,36 @@
 
 ## Verify
 
-Rusty-Framework uses a hybrid Rust/Node frontend stack. Always verify both sides:
+Rusty-Framework uses a hybrid Rust/Node frontend stack. Always verify both sides.
 
+Rust, from the repo root:
+
+```sh
+cargo build --workspace
 cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all -- --check
+```
 
-cargo fmt --all
+Frontend, from `src/frontend` (there is no root `package.json`):
+
+```sh
+pnpm install --frozen-lockfile
+pnpm lint --max-warnings=0
+pnpm exec tsc -b
+pnpm test
+pnpm format:check
+```
 
 **Note:** Rust formatting is enforced on pre-commit via `.husky/pre-commit`. Staged `.rs` files are auto-formatted with `rustfmt --edition 2021 --config skip_children=true` and re-added. Partially staged files are checked as they exist in the index, never rewritten, and will block the commit with "Run: cargo fmt --all" if unformatted.
-
-## Lint
-cargo clippy --workspace --all-targets -- -D warnings
 
 ## Frontend (src/frontend)
 Vite+ toolchain, pnpm@10.33.0. Always `pnpm run <script>` or `pnpm exec vp` —
 a globally installed `vp` may be an older version and `vp migrate` would
 downgrade the project config.
 
-CI runs these three, from `src/frontend`, after `pnpm install --frozen-lockfile`:
-
-pnpm lint --max-warnings=0
-pnpm exec tsc -b
-pnpm test
+CI's `frontend` job runs the first four of the frontend commands above; `pnpm format:check`
+is local-only.
 
 `vite-plus`, `@voidzero-dev/vite-plus-core` (aliased as `vite`) and `vitest` are
 grouped in `renovate.json` as the "vite-plus toolchain" so they bump together:
