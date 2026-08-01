@@ -1,13 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, Notify, RwLock};
 
 use crate::core::event_registry::EventRegistry;
 use crate::core::services::ServiceRegistry;
 use crate::core::view_tree::ViewTree;
 use crate::hooks::hook_store::HookStore;
 use crate::shared::ViewId;
-use crate::views::view::{BuildContext, Element, View};
+use crate::views::view::{BuildContext, Element, RebuildHandle, View};
 
 /// Message types for the runtime event loop.
 #[derive(Debug)]
@@ -34,6 +34,7 @@ pub struct Runtime {
     event_rx: mpsc::Receiver<RuntimeMessage>,
     rebuild_tx: mpsc::Sender<ViewId>,
     rebuild_rx: mpsc::Receiver<ViewId>,
+    rebuild_notify: Arc<Notify>,
     services: Arc<ServiceRegistry>,
 }
 
@@ -57,6 +58,7 @@ impl Runtime {
             event_rx,
             rebuild_tx,
             rebuild_rx,
+            rebuild_notify: Arc::new(Notify::new()),
             services,
         }
     }
@@ -76,6 +78,17 @@ impl Runtime {
         self.rebuild_tx.clone()
     }
 
+    /// A handle that is notified whenever work is queued for `process_pending`.
+    /// The WebSocket handler parks on this instead of polling.
+    pub fn rebuild_notifier(&self) -> Arc<Notify> {
+        Arc::clone(&self.rebuild_notify)
+    }
+
+    /// The handle views use to queue a rebuild and wake the drainer.
+    fn rebuild_handle(&self) -> RebuildHandle {
+        RebuildHandle::new(self.rebuild_tx.clone(), Arc::clone(&self.rebuild_notify))
+    }
+
     /// Build the entire view tree from root, or rebuild a specific subtree.
     ///
     /// - `build(None)` — rebuilds from root (initial build)
@@ -93,11 +106,12 @@ impl Runtime {
 
         // Synchronous build phase — construct element, extract registry and effects
         let services = self.services.clone();
+        let rebuild_handle = self.rebuild_handle();
         let (element, registry, effects) = {
             let store = self.hook_stores.entry(view_id).or_default();
-            let rebuild_tx = self.rebuild_tx.clone();
 
-            let mut ctx = BuildContext::with_services(store, Some(rebuild_tx), view_id, services);
+            let mut ctx =
+                BuildContext::with_services(store, Some(rebuild_handle), view_id, services);
             ctx.reset();
 
             // Clone the Arc<dyn View> so we can borrow view immutably while
@@ -762,5 +776,67 @@ mod tests {
 
         // Verify effect cleanup was called
         assert!(cleanup_called.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn test_rebuild_handle_signals_the_notifier() {
+        use crate::hooks::use_state::use_state;
+
+        struct StateView;
+
+        impl View for StateView {
+            fn build(&self, ctx: &mut BuildContext) -> Element {
+                let value = use_state(ctx, "initial".to_string());
+                let current = value.get();
+                if current == "initial" {
+                    let setter = value.clone();
+                    tokio::spawn(async move {
+                        setter.set("changed".to_string());
+                    });
+                }
+                Element::Widget(Box::new(TextBlock::new(&current)))
+            }
+        }
+
+        let mut runtime = Runtime::new(StateView);
+        let notify = runtime.rebuild_notifier();
+        runtime.build().await;
+
+        // Let the spawned task run
+        for _ in 0..5 {
+            tokio::task::yield_now().await;
+        }
+
+        // The State::set should have signaled the notifier
+        let timeout =
+            tokio::time::timeout(std::time::Duration::from_millis(500), notify.notified());
+        assert!(timeout.await.is_ok(), "notify should have been signaled");
+    }
+
+    #[tokio::test]
+    async fn test_notification_survives_a_lost_select_race() {
+        let runtime = Runtime::new(|_ctx: &mut BuildContext| Element::Empty);
+        let notify = runtime.rebuild_notifier();
+
+        // Signal while no one is waiting
+        notify.notify_one();
+
+        // Run a select where a ready sibling wins
+        tokio::select! {
+            _ = tokio::time::sleep(std::time::Duration::from_millis(0)) => {
+                // This branch wins immediately
+            }
+            _ = notify.notified() => {
+                // This should NOT run
+            }
+        }
+
+        // The permit should still be stored - a subsequent notified() should resolve
+        let timeout =
+            tokio::time::timeout(std::time::Duration::from_millis(100), notify.notified());
+        assert!(
+            timeout.await.is_ok(),
+            "stored permit should still be available"
+        );
     }
 }

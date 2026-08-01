@@ -135,6 +135,31 @@ pub trait View: Send + Sync + 'static {
     fn build(&self, ctx: &mut BuildContext) -> Element;
 }
 
+/// The pair a view needs to ask the runtime for a rebuild: the queue and the
+/// signal that wakes whoever drains it. They travel together so a producer
+/// cannot enqueue without waking the drainer.
+#[derive(Clone, Debug)]
+pub struct RebuildHandle {
+    pub(crate) tx: tokio::sync::mpsc::Sender<ViewId>,
+    pub(crate) notify: Arc<tokio::sync::Notify>,
+}
+
+impl RebuildHandle {
+    pub(crate) fn new(
+        tx: tokio::sync::mpsc::Sender<ViewId>,
+        notify: Arc<tokio::sync::Notify>,
+    ) -> Self {
+        RebuildHandle { tx, notify }
+    }
+
+    /// Queue a rebuild for `view_id` and wake the drainer.
+    pub(crate) fn request(&self, view_id: ViewId) {
+        if self.tx.try_send(view_id).is_ok() {
+            self.notify.notify_one();
+        }
+    }
+}
+
 /// Context passed to View::build providing access to hooks, state, and event registration.
 ///
 /// Holds a mutable reference to a `HookStore` that persists across re-renders,
@@ -144,7 +169,7 @@ pub struct BuildContext<'a> {
     pub(crate) store: &'a mut HookStore,
     effects: Vec<EffectRecord>,
     /// Sender for triggering rebuilds when state changes (carries the ViewId that changed).
-    rebuild_tx: Option<tokio::sync::mpsc::Sender<ViewId>>,
+    rebuild_tx: Option<RebuildHandle>,
     /// The ViewId of the view currently being built.
     pub(crate) current_view_id: ViewId,
     event_registry: EventRegistry,
@@ -179,16 +204,13 @@ pub struct ChildViewEntry {
 }
 
 impl<'a> BuildContext<'a> {
-    pub fn new(
-        store: &'a mut HookStore,
-        rebuild_tx: Option<tokio::sync::mpsc::Sender<ViewId>>,
-    ) -> Self {
+    pub fn new(store: &'a mut HookStore, rebuild_tx: Option<RebuildHandle>) -> Self {
         BuildContext::with_view_id(store, rebuild_tx, uuid::Uuid::nil())
     }
 
     pub fn with_view_id(
         store: &'a mut HookStore,
-        rebuild_tx: Option<tokio::sync::mpsc::Sender<ViewId>>,
+        rebuild_tx: Option<RebuildHandle>,
         view_id: ViewId,
     ) -> Self {
         BuildContext::with_services(store, rebuild_tx, view_id, Arc::new(ServiceRegistry::new()))
@@ -197,7 +219,7 @@ impl<'a> BuildContext<'a> {
     /// Create a context with an explicit service registry.
     pub fn with_services(
         store: &'a mut HookStore,
-        rebuild_tx: Option<tokio::sync::mpsc::Sender<ViewId>>,
+        rebuild_tx: Option<RebuildHandle>,
         view_id: ViewId,
         services: Arc<ServiceRegistry>,
     ) -> Self {
@@ -265,8 +287,10 @@ impl<'a> BuildContext<'a> {
 
     /// Get a clone of the rebuild sender (for State to trigger re-renders).
     /// The sender carries the ViewId so the runtime knows which subtree to rebuild.
-    pub fn rebuild_sender(&self) -> Option<(tokio::sync::mpsc::Sender<ViewId>, ViewId)> {
-        self.rebuild_tx.clone().map(|tx| (tx, self.current_view_id))
+    pub fn rebuild_sender(&self) -> Option<(RebuildHandle, ViewId)> {
+        self.rebuild_tx
+            .clone()
+            .map(|handle| (handle, self.current_view_id))
     }
 
     /// Register an effect to run after build with cleanup support.

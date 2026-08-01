@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 use uuid::Uuid;
 
 use crate::core::runtime::RuntimeMessage;
@@ -238,11 +237,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     }
     let event_tx = session_arc.read().await.runtime.event_sender();
 
-    // Poll for rebuilds triggered outside the request path (async hooks resolving,
-    // spawned tasks calling State::set). The rebuild channel lives inside the
-    // Runtime, so a notification-based push would mean exposing it; 50 ms is
-    // imperceptible to a user.
-    let mut push_ticker = tokio::time::interval(Duration::from_millis(50));
+    // Woken when a rebuild is queued outside the request path (async hooks
+    // resolving, spawned tasks calling State::set). No polling: the task parks
+    // until a producer actually signals.
+    let rebuild_notify = session_arc.read().await.runtime.rebuild_notifier();
 
     // Process incoming messages using this session's isolated runtime
     loop {
@@ -290,7 +288,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     _ => break, // Connection closed or error
                 }
             }
-            _ = push_ticker.tick() => {
+            _ = rebuild_notify.notified() => {
                 let mut session = session_arc.write().await;
                 if session.runtime.process_pending().await {
                     if let Some(tree) = session.runtime.current_tree().await {
