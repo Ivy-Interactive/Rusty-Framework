@@ -39,14 +39,15 @@ grouped in `renovate.json` as the "vite-plus toolchain" so they bump together:
 toolchain. Five entries carry them — `devDependencies.vite`,
 `devDependencies.vite-plus`, `devDependencies.vitest`, `pnpm.overrides.vite` and
 `pnpm.overrides.vitest` — and all five must move to the same versions in one
-change. Renovate does this automatically **only once its GitHub App is installed on this
-repo** — as of 2026-08-01 it is not, on any Ivy-Interactive repo, so the five
-entries must be kept in lockstep by hand. `renovate.json` is a declaration of
-intent until then. CI's `renovate-liveness` job fails once the config is 14 days
-old with no Renovate issue or PR: either install
-https://github.com/apps/renovate or delete `renovate.json`. Do not leave it as
-decoration — `Ivy-Web/.github/renovate.json` has sat inert since a 2024-03
-`create-turbo` scaffold and has never opened a single PR.
+change. `pnpm run check:toolchain` enforces this in CI: it compares all five
+entries and checks `vitest` against the pin `vite-plus` declares on the registry.
+It does not check freshness, which remains Renovate's job once its App is
+installed. As of 2026-08-01 Renovate is not installed on any Ivy-Interactive
+repo, so `renovate.json` is a declaration of intent. CI's `renovate-liveness`
+job fails once the config is 14 days old with no Renovate issue or PR: either
+install https://github.com/apps/renovate or delete `renovate.json`. Do not
+leave it as decoration — `Ivy-Web/.github/renovate.json` has sat inert since a
+2024-03 `create-turbo` scaffold and has never opened a single PR.
 
 Git hooks are husky (`.husky/pre-commit` + `package.json`'s `lint-staged`). Vite+'s `vp staged` / `staged` config is intentionally unused — do not run `vp config`, which would install a competing `.vite-hooks` tree.
 
