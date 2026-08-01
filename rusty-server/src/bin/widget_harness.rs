@@ -19,6 +19,7 @@ enum WidgetKind {
     Layout,
     Card,
     Query,
+    Downloads,
     DataTable,
     Form,
     DiffView,
@@ -62,6 +63,7 @@ impl WidgetKind {
             WidgetKind::Layout => LayoutApp.build(ctx),
             WidgetKind::Card => CardApp.build(ctx),
             WidgetKind::Query => QueryApp.build(ctx),
+            WidgetKind::Downloads => DownloadsApp.build(ctx),
             WidgetKind::DataTable => DataTableApp.build(ctx),
             WidgetKind::Form => FormApp.build(ctx),
             WidgetKind::DiffView => DiffViewApp.build(ctx),
@@ -325,6 +327,82 @@ impl View for CardApp {
                     .title("Another Card")
                     .child(Button::new("Card Action")),
             )
+            .into()
+    }
+}
+
+/// Exercises `use_download_stream` and `use_download_bytes`.
+///
+/// Both URLs start as `None` and are filled in by the mount effect, so they
+/// arrive over the WebSocket push path rather than in the first render. The
+/// URLs render as `code` text blocks because there is no anchor widget â€” the
+/// spec reads them out of the DOM and fetches them itself.
+struct DownloadsApp;
+
+impl View for DownloadsApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let stream_url = use_download_stream(
+            ctx,
+            || async {
+                Ok(futures::stream::iter(vec![
+                    Ok(bytes::Bytes::from("chunk-1;")),
+                    Ok(bytes::Bytes::from("chunk-2;")),
+                    Ok(bytes::Bytes::from("chunk-3;")),
+                ]))
+            },
+            "text/csv",
+            "stream-export.csv",
+        );
+        let bytes_url = use_download_bytes(
+            ctx,
+            b"buffered-body".to_vec(),
+            "application/json",
+            "buffered.json",
+        );
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Downloads Test"))
+            .child(TextBlock::code(&stream_url.get().unwrap_or_default()))
+            .child(TextBlock::code(&bytes_url.get().unwrap_or_default()))
+            .into()
+    }
+}
+
+/// Exercises `use_download_stream` and `use_download_bytes`.
+///
+/// Both URLs start as `None` and are filled in by the mount effect, so they
+/// arrive over the WebSocket push path rather than in the first render. The
+/// URLs render as `code` text blocks because there is no anchor widget — the
+/// spec reads them out of the DOM and fetches them itself.
+struct DownloadsApp;
+
+impl View for DownloadsApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let stream_url = use_download_stream(
+            ctx,
+            || async {
+                Ok(futures::stream::iter(vec![
+                    Ok(bytes::Bytes::from("chunk-1;")),
+                    Ok(bytes::Bytes::from("chunk-2;")),
+                    Ok(bytes::Bytes::from("chunk-3;")),
+                ]))
+            },
+            "text/csv",
+            "stream-export.csv",
+        );
+        let bytes_url = use_download_bytes(
+            ctx,
+            b"buffered-body".to_vec(),
+            "application/json",
+            "buffered.json",
+        );
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Downloads Test"))
+            .child(TextBlock::code(&stream_url.get().unwrap_or_default()))
+            .child(TextBlock::code(&bytes_url.get().unwrap_or_default()))
             .into()
     }
 }
@@ -1125,7 +1203,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // unknown-widget arm to write.
     let widget = cli.widget;
     let static_dir = cli.static_dir;
-    let server = RustyServer::new(cli.port, move || HarnessApp(widget));
+let server = RustyServer::new(cli.port, move || HarnessApp(widget));
 
     let server = if let Some(dir) = static_dir {
         server.with_static_dir(dir)
