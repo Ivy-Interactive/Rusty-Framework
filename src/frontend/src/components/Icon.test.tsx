@@ -1,44 +1,62 @@
-import { render, waitFor } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import React, { act } from "react";
+import { createRoot, Root } from "react-dom/client";
 import Icon from "./Icon";
+
+let container: HTMLDivElement;
+let root: Root;
+
+function mount(element: React.ReactElement) {
+  act(() => {
+    root.render(element);
+  });
+}
+
+beforeEach(() => {
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+});
+
+afterEach(() => {
+  act(() => {
+    root.unmount();
+  });
+  container.remove();
+});
 
 describe("Icon", () => {
   it("renders None icon synchronously", () => {
-    const { container } = render(<Icon name="None" />);
+    mount(<Icon name="None" />);
     const svg = container.querySelector("svg");
-    expect(svg).toBeInTheDocument();
-    expect(svg).toHaveClass("invisible");
+    expect(svg).not.toBeNull();
+    expect(svg!.classList.contains("invisible")).toBe(true);
   });
 
   it("renders IvyCorner icon synchronously", () => {
-    const { container } = render(<Icon name="IvyCorner" />);
+    mount(<Icon name="IvyCorner" />);
     const svg = container.querySelector("svg");
-    expect(svg).toBeInTheDocument();
-    expect(svg).toHaveAttribute("viewBox", "0 0 12 12");
+    expect(svg).not.toBeNull();
+    expect(svg!.getAttribute("viewBox")).toBe("0 0 12 12");
   });
 
   it("renders react-icons synchronously", () => {
-    const { container } = render(<Icon name="Google" />);
+    mount(<Icon name="Google" />);
     const svg = container.querySelector("svg");
-    expect(svg).toBeInTheDocument();
+    expect(svg).not.toBeNull();
   });
 
   it("renders lucide icons asynchronously", async () => {
-    const { container } = render(<Icon name="Home" />);
-    await waitFor(() => {
-      const svg = container.querySelector("svg");
-      expect(svg).toBeInTheDocument();
-    });
+    mount(<Icon name="Home" />);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const svg = container.querySelector("svg");
+    expect(svg).not.toBeNull();
   });
 
   it("renders nothing for unknown icon name", async () => {
-    const { container } = render(<Icon name="NotAnIcon" />);
-    await waitFor(
-      () => {
-        const svg = container.querySelector("svg");
-        expect(svg).not.toBeInTheDocument();
-      },
-      { timeout: 100 }
-    );
+    mount(<Icon name="NotAnIcon" />);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const svg = container.querySelector("svg");
+    expect(svg).toBeNull();
   });
 });
