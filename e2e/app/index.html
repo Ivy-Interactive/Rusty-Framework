@@ -114,7 +114,7 @@
         case 'button': {
           const btn = document.createElement('button');
           btn.textContent = node.title || '';
-          btn.setAttribute('data-variant', node.variant || 'primary');
+          if (node.variant) btn.setAttribute('data-variant', node.variant);
           if (node.disabled) btn.disabled = true;
           if (node.loading) btn.setAttribute('data-loading', 'true');
           if (node.hasOnClick && node.id) {
@@ -452,6 +452,106 @@
           }
           break;
         }
+        case 'badge': {
+          const badge = document.createElement('span');
+          badge.classList.add('badge');
+          badge.textContent = node.label || '';
+          if (node.variant) badge.setAttribute('data-variant', node.variant);
+          if (node.color) badge.setAttribute('data-color', node.color);
+          el.appendChild(badge);
+          break;
+        }
+        case 'progress': {
+          if (node.label) {
+            const lbl = document.createElement('span');
+            lbl.classList.add('field-label');
+            lbl.textContent = node.label;
+            el.appendChild(lbl);
+          }
+          const bar = document.createElement('progress');
+          if (node.indeterminate) {
+            el.setAttribute('data-indeterminate', 'true');
+          } else {
+            bar.value = node.value != null ? node.value : 0;
+            bar.max = node.max != null ? node.max : 1;
+          }
+          el.appendChild(bar);
+          break;
+        }
+        case 'table': {
+          const table = document.createElement('table');
+          if (node.sortBy) {
+            el.setAttribute('data-sort-by', node.sortBy);
+            el.setAttribute('data-sort-ascending', String(!!node.sortAscending));
+          }
+          const columns = node.columns || [];
+          const thead = document.createElement('thead');
+          const headRow = document.createElement('tr');
+          columns.forEach(col => {
+            const th = document.createElement('th');
+            th.textContent = col.label;
+            th.setAttribute('data-key', col.key);
+            if (col.sortable) th.setAttribute('data-sortable', 'true');
+            headRow.appendChild(th);
+          });
+          thead.appendChild(headRow);
+          table.appendChild(thead);
+          const tbody = document.createElement('tbody');
+          (node.rows || []).forEach(row => {
+            const tr = document.createElement('tr');
+            columns.forEach(col => {
+              const td = document.createElement('td');
+              const cell = row[col.key];
+              td.textContent = cell != null ? String(cell) : '';
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+          table.appendChild(tbody);
+          el.appendChild(table);
+          break;
+        }
+        case 'dialog': {
+          el.setAttribute('data-open', String(!!node.open));
+          if (!node.open) el.style.display = 'none';
+          const box = document.createElement('div');
+          box.classList.add('dialog-box');
+          if (node.title) {
+            const t = document.createElement('div');
+            t.classList.add('dialog-title');
+            t.textContent = node.title;
+            box.appendChild(t);
+          }
+          (node.children || []).forEach(child => {
+            box.appendChild(renderWidget(child));
+          });
+          if (node.footer) {
+            const f = document.createElement('div');
+            f.classList.add('dialog-footer');
+            node.footer.forEach(child => f.appendChild(renderWidget(child)));
+            box.appendChild(f);
+          }
+          el.appendChild(box);
+          break;
+        }
+        case 'tooltip': {
+          el.setAttribute('title', node.content || '');
+          el.setAttribute('data-tooltip', node.content || '');
+          if (node.child) el.appendChild(renderWidget(node.child));
+          break;
+        }
+        default: {
+          el.textContent = `[Unknown widget: ${type}]`;
+          // Still render children if present
+          (node.children || []).forEach(child => {
+            el.appendChild(renderWidget(child));
+          });
+          break;
+        }
+      }
+          }
+          break;
+        }
         case 'spacer': {
           el.classList.add('spacer');
           break;
@@ -500,6 +600,111 @@
           glyph.classList.add('icon-glyph');
           glyph.textContent = node.name || '';
           el.appendChild(glyph);
+          break;
+        }
+        case 'image': {
+          const img = document.createElement('img');
+          img.src = node.src || '';
+          img.alt = node.alt || '';
+          if (node.width) img.style.width = node.width;
+          if (node.height) img.style.height = node.height;
+          el.appendChild(img);
+          break;
+        }
+        case 'avatar': {
+          el.classList.add('avatar');
+          el.setAttribute('data-size', node.size || 'normal');
+          if (node.image) {
+            const img = document.createElement('img');
+            img.src = node.image;
+            img.alt = node.fallback || '';
+            el.appendChild(img);
+          } else {
+            const initials = document.createElement('span');
+            initials.setAttribute('data-fallback', 'true');
+            initials.textContent = node.fallback || '';
+            el.appendChild(initials);
+          }
+          break;
+        }
+        case 'callout': {
+          el.classList.add('callout');
+          el.setAttribute('data-variant', node.variant || 'info');
+          if (node.title) {
+            const t = document.createElement('div');
+            t.classList.add('callout-title');
+            t.textContent = node.title;
+            el.appendChild(t);
+          }
+          (node.children || []).forEach(child => {
+            el.appendChild(renderWidget(child));
+          });
+          break;
+        }
+        case 'skeleton': {
+          el.classList.add('skeleton');
+          if (node.width) el.style.width = node.width;
+          if (node.height) el.style.height = node.height;
+          break;
+        }
+        case 'expandable': {
+          el.classList.add('expandable');
+          const expanded = !!node.expanded;
+          el.setAttribute('data-expanded', expanded ? 'true' : 'false');
+          const header = document.createElement('button');
+          header.setAttribute('data-expandable-header', 'true');
+          header.textContent = node.title || '';
+          if (node.hasOnToggle && node.id) {
+            header.addEventListener('click', () => {
+              sendEvent(node.id, 'toggle', { value: !expanded });
+            });
+          }
+          el.appendChild(header);
+          const body = document.createElement('div');
+          body.setAttribute('data-expandable-body', 'true');
+          if (!expanded) body.style.display = 'none';
+          (node.children || []).forEach(child => {
+            body.appendChild(renderWidget(child));
+          });
+          el.appendChild(body);
+          break;
+        }
+        case 'list': {
+          el.classList.add('list');
+          (node.items || []).forEach(item => {
+            el.appendChild(renderWidget(item));
+          });
+          break;
+        }
+        case 'list_item': {
+          el.classList.add('list-item');
+          if (node.icon) {
+            const icon = document.createElement('span');
+            icon.setAttribute('data-icon-name', node.icon);
+            icon.textContent = node.icon;
+            el.appendChild(icon);
+          }
+          const title = document.createElement('span');
+          title.setAttribute('data-list-item-title', 'true');
+          title.textContent = node.title || '';
+          el.appendChild(title);
+          if (node.subtitle) {
+            const sub = document.createElement('span');
+            sub.setAttribute('data-list-item-subtitle', 'true');
+            sub.textContent = node.subtitle;
+            el.appendChild(sub);
+          }
+          if (node.hasOnClick && node.id) {
+            el.style.cursor = 'pointer';
+            el.addEventListener('click', () => sendEvent(node.id, 'click', {}));
+          }
+          break;
+        }
+        case 'text_area': {
+          if (node.label) {
+            const lbl = document.createElement('span');
+            lbl.classList.add('field-label');
+            lbl.textContent = node.label;
           break;
         }
         case 'image': {

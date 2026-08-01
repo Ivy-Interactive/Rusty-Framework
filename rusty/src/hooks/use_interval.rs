@@ -16,8 +16,8 @@ where
 {
     let idx = ctx.next_hook_index();
     let rebuild_info = ctx.rebuild_sender();
-    let (rebuild_tx, view_id) = match rebuild_info {
-        Some((tx, vid)) => (Some(tx), vid),
+    let (rebuild_handle, view_id) = match rebuild_info {
+        Some((handle, vid)) => (Some(handle), vid),
         None => (None, crate::shared::ViewId::nil()),
     };
 
@@ -43,8 +43,8 @@ where
                         interval.tick().await;
                         callback();
                         // Optionally trigger rebuild with owning ViewId
-                        if let Some(ref tx) = rebuild_tx {
-                            let _ = tx.try_send(view_id);
+                        if let Some(ref handle) = rebuild_handle {
+                            handle.request(view_id);
                         }
                     }
                 });
