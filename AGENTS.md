@@ -75,7 +75,9 @@ un-annotated — plain `cargo build --workspace` compiles **zero** examples, so
 Tests live in `rusty-macros`: `cargo test -p rusty-macros` runs 51 unit tests over `syn::parse_str`
 fixtures plus a 19-case `trybuild` suite in `rusty-macros/tests/ui`. The `.stderr` files are
 **exact-match snapshots** — to accept a changed message, delete the `.stderr` and re-run, then move
-the file trybuild writes to `tests/ui/wip/` back into `tests/ui/`. Never hand-edit them. Seven
+the file trybuild writes to **`rusty-macros/wip/`** back into `tests/ui/`. That path is the crate
+root, not `tests/ui/wip/`, whatever the failure message says; `wip/` is gitignored. Never hand-edit
+the snapshots. Seven
 `t.pass(..)` cases carry the shapes that already exist in the repo (hook in an `if` condition,
 `.set()` in a closure, `.set()` in `tokio::spawn(async move { .. })`, `.update()` on a `use_ref`
 binding) and each `allow(..)` hatch, so a rule that starts over-reporting fails there.

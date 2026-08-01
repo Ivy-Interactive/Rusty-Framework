@@ -3,8 +3,9 @@
 //! `compile_fail` cases assert the *exact* stderr, so `.stderr` files are
 //! snapshots: never hand-edit them. To accept a changed message, delete the
 //! `.stderr` and run `cargo test -p rusty-macros --test ui` — trybuild writes
-//! the new output to `tests/ui/wip/<name>.stderr`, which you move back into
-//! `tests/ui/`.
+//! the new output to `rusty-macros/wip/<name>.stderr` (the crate root, *not*
+//! `tests/ui/wip/`), which you move back into `tests/ui/`. Delete the `wip/`
+//! directory afterwards; it is gitignored so a stray one cannot be committed.
 //!
 //! `pass` cases carry the shapes that already exist in the repo and must never
 //! be flagged: a hook in an `if` *condition*, `.set()` inside a closure or an
