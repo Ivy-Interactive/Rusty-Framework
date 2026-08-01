@@ -802,7 +802,9 @@ dependencies = [
 name = "rusty-server"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "clap",
+ "futures",
  "rusty",
  "serde_json",
  "tokio",

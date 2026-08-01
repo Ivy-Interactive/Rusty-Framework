@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Button } from "./ui/button";
 import { ClipboardCopy, Check } from "lucide-react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import SyntaxHighlighter from "@/lib/prismLightCsharp";
 import { createPrismTheme } from "@/lib/prismTheme";
 
 interface ErrorDisplayProps {
