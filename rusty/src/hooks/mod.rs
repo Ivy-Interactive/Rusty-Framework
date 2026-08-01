@@ -1,5 +1,6 @@
 pub mod deps;
 pub mod hook_store;
+pub mod use_alert;
 pub mod use_callback;
 pub mod use_context;
 pub mod use_download;
@@ -13,8 +14,10 @@ pub mod use_ref;
 pub mod use_service;
 pub mod use_signal;
 pub mod use_state;
+pub mod use_trigger;
 
 pub use deps::{deps_changed, DynEq};
+pub use use_alert::{use_alert, AlertCallback, ShowAlert};
 pub use use_callback::use_callback;
 pub use use_context::{create_context, use_context};
 pub use use_download::{use_download, use_download_bytes};
@@ -28,3 +31,4 @@ pub use use_ref::{use_ref, Ref};
 pub use use_service::use_service;
 pub use use_signal::{signal_registry, use_receiver_id, use_signal};
 pub use use_state::{use_state, State};
+pub use use_trigger::{use_trigger, use_trigger_unit};
