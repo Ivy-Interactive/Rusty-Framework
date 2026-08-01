@@ -89,12 +89,15 @@ The frontend project uses **Vite+** integrated tools (**Oxlint** and **Oxfmt**) 
 ### Pre-commit Hooks
 
 We use a Husky npm package to set up the repo's pre-commit hook. It lints and formats staged frontend files and runs rustfmt on staged .rs files.
+The frontend step requires `node` on `PATH` (the local `vp` shim execs it); if it is missing the hook stops with an explicit error. Staged-Rust-only and conflict-marker commits do not need node.
 
 The active hook is `.husky/pre-commit` (`core.hooksPath` points at `.husky/_`), and its frontend step reads per-glob commands from the `lint-staged` key in `package.json`. Edit those two files. Vite+'s own `vp staged` runner is deliberately **not** used: husky's installer rewrites `core.hooksPath` on every `pnpm install`, so the two cannot coexist, and `.husky/pre-commit` also carries a merge-conflict-marker check that a `staged` glob map cannot express.
 
 For Rust files, the hook runs `rustfmt --edition 2021 --config skip_children=true` on staged `.rs` files. Fully staged files are auto-formatted and re-added; partially staged files (where the worktree has unstaged edits) are checked as they exist in the index, never rewritten, and will block the commit with "Run: cargo fmt --all" if unformatted. If `rustfmt` is not on `PATH`, the Rust block is skipped.
 
 Hooks are installed automatically by the `prepare` script when you run `pnpm install` in `src/frontend`. Ideally, you would not then need to run any formatting or lint commands as it will be done for you. In case you want to manually run them, you still can.
+
+**`core.hooksPath` is not configurable here.** The `prepare` script runs husky's installer, which sets `core.hooksPath` to `src/frontend/.husky/_` unconditionally — it never checks the current value. If you point `core.hooksPath` somewhere else, the next `pnpm install` in `src/frontend` silently puts it back, with no warning. This is deliberate: it keeps `.husky/pre-commit` the single authoritative hook. To disable hooks for one command use `git commit --no-verify`, or set `HUSKY=0` to skip the install step (`index.js` returns early on `HUSKY=0`).
 
 ### Code Formatting
 
@@ -165,6 +168,12 @@ lazy one. Fix by splitting the eager exports into their own files, as `chat/` do
 `ChatMessageWidget.tsx`, `ChatLoadingWidget.tsx` and `ChatStatusWidget.tsx`. Once split, keep the
 lazy widget out of the barrel: `chat/index.ts` deliberately does not re-export `ChatWidget`.
 
+**3. Through a third-party barrel read as a record.** Reading a third-party barrel's exports object
+(like `icons` from `lucide-react`) prevents tree-shaking because the object access forces retention
+of all exports. Fix by extracting the dynamic lookup into its own module and loading it with
+`lazyWithRetry`, as `LucideIcon.tsx` does for the `icons` record. Named imports from the same package
+are free and can stay eager - `import { Folder } from "lucide-react"` tree-shakes correctly.
+
 Type-only references are free, in either direction. A `type` does not exist at runtime, so it creates
 no edge, which is why `ChatWidget.tsx` may safely import `ChatMessageWidgetProps` from the file it was
 split out of. Write it as `import type { ... }`: a plain `import` of a type-only binding is erased too
@@ -197,6 +206,7 @@ pnpm run build && pnpm run check:bundle
 This check walks static import edges from the entry chunk named in `dist/index.html` and fails if the
 total eager JS exceeds a byte budget (`MAX_EAGER_BYTES` in
 `scripts/check-eager-bundle.mjs`). Exit codes:
+
 - `0`: pass
 - `1`: over budget (the error message lists the largest chunks)
 - `2`: the check itself could not run (no `dist/`, or the modulepreload cross-check failed)
@@ -219,6 +229,14 @@ without a build, though only for the barrel it names.
 `@/widgets/rowAction` (used by `tree/TreeItem.tsx` and `dataTables/`). Six of the 27 top-level barrels
 have no importer at all, so they cannot defeat anything no matter what they re-export. There is no
 need to pre-emptively narrow them.
+
+A barrel whose only runtime export is the lazy widget itself (plus `export type` declarations) is
+harmless while nothing imports it, but rewriting the `import()` to name the concrete module alone
+does not protect it - the barrel's own `export { Widget }` re-export becomes the static edge once
+an eager importer appears. Both halves must be applied: narrow the barrel and point the dynamic
+import at the concrete module. Four barrels (`calendar/`, `kanban/`, `tree/`, `layouts/sidebar/`)
+currently re-export a lazy widget but have zero production importers and remain intentionally
+untouched.
 
 ## Testing
 
@@ -327,17 +345,17 @@ Tests are automatically run in GitHub Actions on push to main/master branches an
 
 ## Available Commands and Scripts
 
-| Command/Script            | Description                                   |
-| ------------------------- | --------------------------------------------- |
-| `vp dev`                  | Start development server                      |
-| `vp run build`            | Build for production (typecheck + vp)         |
-| `vp run check:bundle`     | Check the eager bundle against its byte budget|
-| `vp preview`              | Preview production build                      |
-| `vp test`                 | Run unit tests with Vitest                    |
-| `vp run e2e`              | Run all end-to-end tests                      |
-| `vp run e2e:docs`         | Run Ivy.Docs end-to-end tests                 |
-| `vp run e2e:samples`      | Run Ivy.Samples end-to-end tests              |
-| `vp lint .`               | Check for linting issues                      |
-| `vp lint --fix .`         | Fix linting issues automatically              |
-| `vp fmt .`                | Format all files with Oxfmt                   |
-| `vp fmt --check .`        | Check if files are properly formatted         |
+| Command/Script        | Description                                    |
+| --------------------- | ---------------------------------------------- |
+| `vp dev`              | Start development server                       |
+| `vp run build`        | Build for production (typecheck + vp)          |
+| `vp run check:bundle` | Check the eager bundle against its byte budget |
+| `vp preview`          | Preview production build                       |
+| `vp test`             | Run unit tests with Vitest                     |
+| `vp run e2e`          | Run all end-to-end tests                       |
+| `vp run e2e:docs`     | Run Ivy.Docs end-to-end tests                  |
+| `vp run e2e:samples`  | Run Ivy.Samples end-to-end tests               |
+| `vp lint .`           | Check for linting issues                       |
+| `vp lint --fix .`     | Fix linting issues automatically               |
+| `vp fmt .`            | Format all files with Oxfmt                    |
+| `vp fmt --check .`    | Check if files are properly formatted          |

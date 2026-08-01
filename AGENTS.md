@@ -32,9 +32,8 @@ Vite+ toolchain, pnpm@10.33.0. Always `pnpm run <script>` or `pnpm exec vp` —
 a globally installed `vp` may be an older version and `vp migrate` would
 downgrade the project config.
 
-CI's `frontend` job runs every command above except `pnpm format:check`, which is local-only.
+CI's `frontend` job runs every command above except `pnpm format:check`, which is local-only. The `check:toolchain` lockstep check also runs in CI.
 
-`vite-plus`, `@voidzero-dev/vite-plus-core` (aliased as `vite`) and `vitest` are
 grouped in `renovate.json` as the "vite-plus toolchain" so they bump together:
 `vite-plus` pins `vitest` exactly, so a partial bump desynchronizes the
 toolchain. Five entries carry them — `devDependencies.vite`,
@@ -43,12 +42,33 @@ toolchain. Five entries carry them — `devDependencies.vite`,
 change. `pnpm run check:toolchain` enforces this in CI: it compares all five
 entries and checks `vitest` against the pin `vite-plus` declares on the registry.
 It does not check freshness, which remains Renovate's job once its App is
-installed. As of 2026-08-01 Renovate is not installed on any Ivy-Interactive
+installed. For local workstation drift detection, `pnpm run doctor` compares
+installed versions in `node_modules` against declared versions in `package.json`
+(CI cannot catch this since it installs onto a clean runner). As of 2026-08-01 Renovate is not installed on any Ivy-Interactive
 repo, so `renovate.json` is a declaration of intent. CI's `renovate-liveness`
 job fails once the config is 14 days old with no Renovate issue or PR: either
 install https://github.com/apps/renovate or delete `renovate.json`. Do not
 leave it as decoration — `Ivy-Web/.github/renovate.json` has sat inert since a
 2024-03 `create-turbo` scaffold and has never opened a single PR. To check what `renovate.json` would actually do, see "Probing renovate.json" under `## CI` - the dry-run needs `GITHUB_COM_TOKEN` or it silently reports no GitHub Actions updates.
+
+Beyond the vite-plus trio, `renovate.json` groups the remaining 117 npm entries
+(86 dependencies + 21 devDependencies + 10 pnpm.overrides in `src/frontend/package.json`,
+plus 1 devDependency in `e2e/package.json`) into a single weekly PR on Mondays.
+Minor and patch updates ship in that group; majors and the `framer-motion` → `motion`
+package rename appear only on the Dependency Dashboard. `@glideapps/glide-data-grid`
+is pinned because its prerelease tags (alpha24, alpha9, alpha3…) sort backwards as strings,
+so Renovate would offer `6.0.4-alpha24 → 6.0.4-alpha9` as a patch — a 501-day downgrade.
+**The npm group rule must stay before the vite-plus rule** in `packageRules`: the array is
+last-match-wins, so placing the npm group after the trio absorbs all five vite-plus entries
+into the npm group and breaks their lockstep. Grouping is not optional — without it Renovate
+opens 36 PRs, and it splits `pnpm.overrides` mirrors (e.g. `mermaid` and
+`remark-mermaid-plugin>mermaid`) into separate branches even when they're the same version.
+
+`pnpm run check:toolchain` compares the five manifest entries to each other; it reads no
+`node_modules` and passes on a stale install. `pnpm run check:installed` compares the four exact
+toolchain pins against what is actually installed, and runs automatically before `build`, `lint` and
+`test`. If it fails, run `pnpm install` — a populated `node_modules` is not evidence of a current
+one.
 
 Git hooks are husky (`.husky/pre-commit` + `package.json`'s `lint-staged`). Vite+'s `vp staged` / `staged` config is intentionally unused — do not run `vp config`, which would install a competing `.vite-hooks` tree.
 
@@ -56,7 +76,7 @@ Git hooks are husky (`.husky/pre-commit` + `package.json`'s `lint-staged`). Vite
 
 `.github/workflows/ci.yml` runs build, test, clippy, `cargo fmt --all -- --check`,
 frontend checks, and renovate-liveness on every push to `main` and every PR. All checks
-report independently — a failure in one does not skip the rest.
+report independently — a failure in one does not skip the rest. A weekly `cargo-majors` job (`schedule`, plus `workflow_dispatch`) reports Cargo dependencies whose latest stable release is outside the major series declared in the manifests. It is report-only. This exists because `renovate.json` parks all cargo updates, and Renovate omits parked dependencies from the Dependency Dashboard entirely - a parked major is invisible, not a checkbox. As of 2026-08-02: `syn` `^2` -> 3.0.3, `tower-http` `^0.6` -> 0.7.0, `tokio-tungstenite` `^0.29` -> 0.30.0.
 
 `main` has no branch protection and no rulesets:
 
