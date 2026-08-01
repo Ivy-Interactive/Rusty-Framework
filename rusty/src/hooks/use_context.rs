@@ -112,7 +112,7 @@ mod tests {
         );
 
         // Child reads the context — gets a snapshot
-        let (_element, _child_id, _child_store) = ctx.child_view(ChildView, None);
+        let (_element, _child_id) = ctx.child_view(ChildView);
         let child_saw = CHILD_RESULT.lock().unwrap().take().unwrap();
         assert_eq!(child_saw, "blue");
 
@@ -135,7 +135,7 @@ mod tests {
         assert_eq!(parent_theme.primary_color, "red");
 
         // Build another child — it should see "red" since snapshot is taken at child_view() time
-        let (_element2, _child_id2, _child_store2) = ctx.child_view(ChildView, None);
+        let (_element2, _child_id2) = ctx.child_view(ChildView);
         let child2_saw = CHILD_RESULT.lock().unwrap().take().unwrap();
         assert_eq!(child2_saw, "red");
     }
