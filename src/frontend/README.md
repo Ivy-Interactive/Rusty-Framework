@@ -90,13 +90,9 @@ The frontend project uses **Vite+** integrated tools (**Oxlint** and **Oxfmt**) 
 
 We use a Husky npm package to set up the repo's pre-commit hook. It lints and formats staged frontend files.
 
-The active hook is `.husky/pre-commit` (`core.hooksPath` points at `.husky/_`), and it reads its
-per-glob commands from the `lint-staged` key in `package.json`. Two other files look like they
-configure it but do not: `.vite-hooks/pre-commit` and the `staged` block in `vite.config.mjs` belong
-to Vite+'s own hook runner, which this repo does not select. Edit `.husky/pre-commit` and
-`package.json`, not those.
+The active hook is `.husky/pre-commit`; `core.hooksPath` points at `.husky/_`, set by the `prepare` script. It reads its per-glob commands from the `lint-staged` key in `package.json`. Edit those two files. Vite+'s own `vp staged` runner is deliberately **not** used: husky's installer rewrites `core.hooksPath` on every `pnpm install`, so the two cannot coexist, and `.husky/pre-commit` also carries a merge-conflict-marker check that a `staged` glob map cannot express.
 
-To get the auto-linting for staged files, you need to have run `vp install` in `./frontend` at least once. Ideally, you would not then need to run any formatting or lint commands as it will be done for you. In case you want to manually run them, you still can.
+Hooks are installed automatically by the `prepare` script when you run `pnpm install` in `src/frontend`. Ideally, you would not then need to run any formatting or lint commands as it will be done for you. In case you want to manually run them, you still can.
 
 If there are issues that auto-linting and formatting can't resolve automatically, your commit will be blocked from being pushed. If you really need to push, you can specify checks behavior per commit (not recommended):
 

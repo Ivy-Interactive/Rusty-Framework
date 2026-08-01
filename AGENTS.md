@@ -24,3 +24,5 @@ toolchain. Five entries carry them — `devDependencies.vite`,
 `pnpm.overrides.vitest` — and all five must move to the same versions in one
 change. Renovate does this automatically once its GitHub App is installed on the
 repo; until then, keep them in lockstep by hand.
+
+Git hooks are husky (`.husky/pre-commit` + `package.json`'s `lint-staged`). Vite+'s `vp staged` / `staged` config is intentionally unused — do not run `vp config`, which would install a competing `.vite-hooks` tree.
