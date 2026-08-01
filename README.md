@@ -60,12 +60,27 @@ Rusty-Framework follows the same architecture as Ivy-Framework:
 
 ## Examples
 
+The examples live in `rusty/examples/` and each one starts a server on port 3000.
+Set `PORT` to run several at once.
+
 ```bash
-# Run the counter example
+# Smallest possible app — layout, text and a button
+cargo run --example hello_world
+
+# use_state driving increment / decrement / reset
 cargo run --example counter
 
-# Run the hello world example
-cargo run --example hello_world
+# One card per widget family
+cargo run --example widget_gallery
+
+# Every input widget wired to state, with a submit summary
+cargo run --example form
+
+# Every hook, each with a visible readout
+cargo run --example hooks_showcase
+
+# Run two at once
+PORT=3010 cargo run --example counter
 ```
 
 ## Development

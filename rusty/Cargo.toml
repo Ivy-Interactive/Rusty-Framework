@@ -18,3 +18,5 @@ rusty-macros = { path = "../rusty-macros" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
+# Used by the examples in examples/, which are dev targets of this crate.
+tracing-subscriber.workspace = true
