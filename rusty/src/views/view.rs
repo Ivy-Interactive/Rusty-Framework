@@ -237,14 +237,6 @@ impl<'a> BuildContext<'a> {
         }
     }
 
-    /// Replace this context's service registry, so views built through it can
-    /// resolve services with `use_service`. The builder form of
-    /// [`BuildContext::with_services`].
-    pub fn using_services(mut self, services: Arc<ServiceRegistry>) -> Self {
-        self.services = services;
-        self
-    }
-
     /// The server-level service registry backing this build.
     pub fn services(&self) -> &Arc<ServiceRegistry> {
         &self.services
