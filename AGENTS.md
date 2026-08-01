@@ -42,7 +42,9 @@ toolchain. Five entries carry them — `devDependencies.vite`,
 change. `pnpm run check:toolchain` enforces this in CI: it compares all five
 entries and checks `vitest` against the pin `vite-plus` declares on the registry.
 It does not check freshness, which remains Renovate's job once its App is
-installed. As of 2026-08-01 Renovate is not installed on any Ivy-Interactive
+installed. For local workstation drift detection, `pnpm run doctor` compares
+installed versions in `node_modules` against declared versions in `package.json`
+(CI cannot catch this since it installs onto a clean runner). As of 2026-08-01 Renovate is not installed on any Ivy-Interactive
 repo, so `renovate.json` is a declaration of intent. CI's `renovate-liveness`
 job fails once the config is 14 days old with no Renovate issue or PR: either
 install https://github.com/apps/renovate or delete `renovate.json`. Do not
