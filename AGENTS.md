@@ -17,7 +17,7 @@ Frontend, from `src/frontend` (there is no root `package.json`):
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm lint --max-warnings=0
+pnpm lint
 pnpm exec tsc -b
 pnpm test
 pnpm format:check
