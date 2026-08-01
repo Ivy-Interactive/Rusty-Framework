@@ -1,4 +1,4 @@
-use crate::shared::{Align, Justify};
+use crate::shared::{Align, Justify, Size};
 use crate::views::view::{BuildContext, Element, WidgetData};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -28,45 +28,39 @@ pub struct Layout {
     pub padding: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub columns: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<Size>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height: Option<Size>,
+    pub wrap: bool,
 }
 
 impl Layout {
     pub fn vertical() -> Self {
-        Layout {
-            id: None,
-            direction: LayoutDirection::Vertical,
-            children: Vec::new(),
-            gap: None,
-            align: None,
-            justify: None,
-            padding: None,
-            columns: None,
-        }
+        Layout::with_direction(LayoutDirection::Vertical, None)
     }
 
     pub fn horizontal() -> Self {
-        Layout {
-            id: None,
-            direction: LayoutDirection::Horizontal,
-            children: Vec::new(),
-            gap: None,
-            align: None,
-            justify: None,
-            padding: None,
-            columns: None,
-        }
+        Layout::with_direction(LayoutDirection::Horizontal, None)
     }
 
     pub fn grid(columns: usize) -> Self {
+        Layout::with_direction(LayoutDirection::Grid, Some(columns))
+    }
+
+    fn with_direction(direction: LayoutDirection, columns: Option<usize>) -> Self {
         Layout {
             id: None,
-            direction: LayoutDirection::Grid,
+            direction,
             children: Vec::new(),
             gap: None,
             align: None,
             justify: None,
             padding: None,
-            columns: Some(columns),
+            columns,
+            width: None,
+            height: None,
+            wrap: false,
         }
     }
 
@@ -94,6 +88,22 @@ impl Layout {
 
     pub fn padding(mut self, padding: f64) -> Self {
         self.padding = Some(padding);
+        self
+    }
+
+    pub fn width(mut self, width: Size) -> Self {
+        self.width = Some(width);
+        self
+    }
+
+    pub fn height(mut self, height: Size) -> Self {
+        self.height = Some(height);
+        self
+    }
+
+    /// Allow children to wrap onto additional lines when they overflow.
+    pub fn wrap(mut self, wrap: bool) -> Self {
+        self.wrap = wrap;
         self
     }
 
@@ -134,6 +144,9 @@ impl WidgetData for Layout {
             "justify": self.justify,
             "padding": self.padding,
             "columns": self.columns,
+            "width": self.width.as_ref().map(Size::to_css),
+            "height": self.height.as_ref().map(Size::to_css),
+            "wrap": self.wrap,
         })
     }
 
@@ -182,5 +195,39 @@ mod tests {
         let layout = Layout::grid(3);
         assert_eq!(layout.direction, LayoutDirection::Grid);
         assert_eq!(layout.columns, Some(3));
+    }
+
+    #[test]
+    fn test_layout_sizing_builders() {
+        let layout = Layout::horizontal()
+            .width(Size::Percent(100.0))
+            .height(Size::Px(240.0))
+            .wrap(true);
+
+        assert_eq!(layout.width, Some(Size::Percent(100.0)));
+        assert_eq!(layout.height, Some(Size::Px(240.0)));
+        assert!(layout.wrap);
+    }
+
+    #[test]
+    fn test_layout_json_includes_sizing() {
+        let json = Layout::vertical()
+            .width(Size::Auto)
+            .height(Size::Px(64.0))
+            .wrap(true)
+            .to_json();
+
+        assert_eq!(json["type"], "layout");
+        assert_eq!(json["width"], "auto");
+        assert_eq!(json["height"], "64px");
+        assert_eq!(json["wrap"], true);
+    }
+
+    #[test]
+    fn test_layout_json_omits_unset_sizing() {
+        let json = Layout::vertical().to_json();
+        assert!(json["width"].is_null());
+        assert!(json["height"].is_null());
+        assert_eq!(json["wrap"], false);
     }
 }
