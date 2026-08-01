@@ -36,9 +36,16 @@ impl EventName {
         }
     }
 
+    /// Canonicalize a wire event name: strips a leading `on` and lowercases,
+    /// so `onClick`, `click` and `Click` all map to `EventName::Click`.
+    pub fn canonicalize(s: &str) -> String {
+        let trimmed = s.strip_prefix("on").filter(|r| !r.is_empty()).unwrap_or(s);
+        trimmed.to_ascii_lowercase()
+    }
+
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
-        match s {
+        match Self::canonicalize(s).as_str() {
             "click" => Some(EventName::Click),
             "change" => Some(EventName::Change),
             "cellclick" => Some(EventName::CellClick),
@@ -88,7 +95,10 @@ impl EventRegistry {
     /// Dispatch an event to the registered handler.
     /// Returns true if a handler was found and invoked, false otherwise.
     pub fn dispatch(&self, widget_id: &str, event_name: &str, args: serde_json::Value) -> bool {
-        let key = (widget_id.to_string(), event_name.to_string());
+        let canonical = EventName::from_str(event_name)
+            .map(|e| e.as_str().to_string())
+            .unwrap_or_else(|| event_name.to_string());
+        let key = (widget_id.to_string(), canonical);
         if let Some(handler) = self.handlers.get(&key) {
             handler(args);
             true
@@ -184,7 +194,7 @@ mod tests {
             assert_eq!(event.as_str(), event.as_str().to_lowercase());
         }
 
-        assert_eq!(EventName::from_str("onClick"), None);
+        assert_eq!(EventName::from_str("onClick"), Some(EventName::Click));
         assert_eq!(EventName::from_str("unknown"), None);
     }
 
@@ -196,5 +206,53 @@ mod tests {
 
         registry.clear();
         assert!(!registry.dispatch("w-0", "click", serde_json::Value::Null));
+    }
+
+    #[test]
+    fn test_canonicalize() {
+        assert_eq!(EventName::canonicalize("onClick"), "click");
+        assert_eq!(EventName::canonicalize("Click"), "click");
+        assert_eq!(EventName::canonicalize("onchange"), "change");
+        assert_eq!(EventName::canonicalize("on"), "on"); // bare "on" left alone
+        assert_eq!(EventName::canonicalize("click"), "click");
+    }
+
+    #[test]
+    fn test_dispatch_with_camelcase() {
+        let mut registry = EventRegistry::new();
+        let called = Arc::new(AtomicBool::new(false));
+        let called_clone = called.clone();
+
+        // Register handler under lowercase "click"
+        registry.register(
+            "w-0",
+            "click",
+            Arc::new(move |_args| {
+                called_clone.store(true, Ordering::SeqCst);
+            }),
+        );
+
+        // Dispatch with camelCase "onClick" - should find the handler
+        let result = registry.dispatch("w-0", "onClick", serde_json::Value::Null);
+        assert!(result);
+        assert!(called.load(Ordering::SeqCst));
+
+        // Test reverse: register with "onChange", dispatch with "change"
+        let called2 = Arc::new(AtomicBool::new(false));
+        let called2_clone = called2.clone();
+        registry.register(
+            "w-1",
+            "onChange",
+            Arc::new(move |_args| {
+                called2_clone.store(true, Ordering::SeqCst);
+            }),
+        );
+        let result2 = registry.dispatch("w-1", "change", serde_json::Value::Null);
+        assert!(result2);
+        assert!(called2.load(Ordering::SeqCst));
+
+        // Test unknown event name with exact match
+        registry.register("w-2", "customEvent", Arc::new(|_| {}));
+        assert!(registry.dispatch("w-2", "customEvent", serde_json::Value::Null));
     }
 }

@@ -43,11 +43,7 @@ test('advance button is present', async ({ page }) => {
   await expect(page.locator('button:has-text("Advance")')).toBeEnabled();
 });
 
-// Pre-existing framework bug: Runtime::run() is never spawned for a WebSocket
-// session, so RuntimeMessage::Event is queued on a channel nobody reads and no
-// update patch is ever sent. The same defect fails button.spec.ts and
-// input.spec.ts on main. Un-fixme once the event loop is driven.
-test.fixme('advance button updates the progress value', async ({ page }) => {
+test('advance button updates the progress value', async ({ page }) => {
   await navigateToHarness(page, harness.port);
 
   await expect(page.locator('text=Value: 0')).toBeVisible();
