@@ -129,6 +129,30 @@ vp lint --fix .
 - `vite.config.mjs` - Contains Vite+ syntax formatting and linting preferences
 - `package.json` - Contains execution scripts
 
+### Checking the Installed Toolchain Version
+
+To see which version of a package is actually in use, ask pnpm — do **not** list the store:
+
+```sh
+pnpm ls vite-plus     # -> vite-plus@0.2.7
+```
+
+`ls node_modules/.pnpm | grep vite-plus` is **not** a reliable diagnostic. `.pnpm` keeps every
+generation it has ever linked, so a freshly repaired tree still lists the stale one; only the
+symlink at `node_modules/vite-plus` reflects what actually resolves.
+
+Superseded generations are inert — nothing links them — but they make that listing misleading. To
+remove them:
+
+```sh
+pnpm prune --ignore-scripts
+```
+
+`--ignore-scripts` matters here: `pnpm prune` re-runs the `prepare` script, and this project's
+`prepare` is the husky installer, which rewrites `git config core.hooksPath` unconditionally.
+`pnpm store prune` is a **different** command — it cleans the global content-addressable store and
+leaves `node_modules/.pnpm` untouched.
+
 ## Module Graph and Lazy Loading
 
 Most widgets in `src/widgets/widgetMap.ts` are code-split with `lazyWithRetry(() => import("..."))`.
