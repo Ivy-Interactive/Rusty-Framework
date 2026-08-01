@@ -3,6 +3,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, Weak};
 
+use bytes::Bytes;
+use futures::Stream;
 use uuid::Uuid;
 
 use crate::core::query_cache::QueryError;
@@ -15,9 +17,26 @@ pub type DownloadFactory = Arc<
     dyn Fn() -> Pin<Box<dyn Future<Output = Result<Vec<u8>, QueryError>> + Send>> + Send + Sync,
 >;
 
+/// A stream of bytes for a chunked download.
+pub type ByteStream = Pin<Box<dyn Stream<Item = Result<Bytes, QueryError>> + Send>>;
+
+/// Produces a stream for a download, called when the client requests the URL.
+///
+/// The factory returns the stream handle, so opening a file is deferred to request
+/// time while the chunks stay lazy.
+pub type StreamFactory = Arc<
+    dyn Fn() -> Pin<Box<dyn Future<Output = Result<ByteStream, QueryError>> + Send>> + Send + Sync,
+>;
+
+/// The source of a download's content.
+enum DownloadSource {
+    Bytes(DownloadFactory),
+    Stream(StreamFactory),
+}
+
 /// One registered download.
 struct DownloadEntry {
-    factory: DownloadFactory,
+    source: DownloadSource,
     mime_type: String,
     file_name: String,
 }
@@ -79,11 +98,30 @@ impl DownloadService {
         mime_type: impl Into<String>,
         file_name: impl Into<String>,
     ) -> (DownloadHandle, String) {
+        self.add_entry(DownloadSource::Bytes(factory), mime_type, file_name)
+    }
+
+    /// Register a streaming download and return its handle plus the URL.
+    pub fn add_stream_download(
+        self: &Arc<Self>,
+        factory: StreamFactory,
+        mime_type: impl Into<String>,
+        file_name: impl Into<String>,
+    ) -> (DownloadHandle, String) {
+        self.add_entry(DownloadSource::Stream(factory), mime_type, file_name)
+    }
+
+    fn add_entry(
+        self: &Arc<Self>,
+        source: DownloadSource,
+        mime_type: impl Into<String>,
+        file_name: impl Into<String>,
+    ) -> (DownloadHandle, String) {
         let download_id = Uuid::new_v4();
         self.entries.lock().unwrap().insert(
             download_id,
             DownloadEntry {
-                factory,
+                source,
                 mime_type: mime_type.into(),
                 file_name: file_name.into(),
             },
@@ -97,34 +135,48 @@ impl DownloadService {
         (handle, url)
     }
 
-    /// Run a download's factory and return its bytes with the response metadata.
+    /// Run a download's factory and return its payload with the response metadata.
     ///
     /// The entry stays registered, so a download can be fetched more than once —
     /// the browser may retry, and Ivy's cleanup is tied to the view's lifetime
     /// rather than to a single request.
-    pub async fn take_bytes(&self, download_id: Uuid) -> Option<DownloadResponse> {
+    pub async fn take(&self, download_id: Uuid) -> Option<DownloadResponse> {
         // The lock is released before awaiting the factory.
-        let (factory, mime_type, file_name) = {
+        let (source, mime_type, file_name) = {
             let entries = self.entries.lock().unwrap();
             let entry = entries.get(&download_id)?;
             (
-                Arc::clone(&entry.factory),
+                match &entry.source {
+                    DownloadSource::Bytes(f) => DownloadSource::Bytes(Arc::clone(f)),
+                    DownloadSource::Stream(f) => DownloadSource::Stream(Arc::clone(f)),
+                },
                 entry.mime_type.clone(),
                 entry.file_name.clone(),
             )
         };
 
-        match (factory)().await {
-            Ok(bytes) => Some(DownloadResponse {
-                bytes,
-                mime_type,
-                file_name,
-            }),
-            Err(error) => {
-                tracing::error!(%download_id, %error, "download factory failed");
-                None
-            }
-        }
+        let payload = match source {
+            DownloadSource::Bytes(factory) => match factory().await {
+                Ok(bytes) => DownloadPayload::Bytes(bytes),
+                Err(error) => {
+                    tracing::error!(%download_id, %error, "download factory failed");
+                    return None;
+                }
+            },
+            DownloadSource::Stream(factory) => match factory().await {
+                Ok(stream) => DownloadPayload::Stream(stream),
+                Err(error) => {
+                    tracing::error!(%download_id, %error, "stream factory failed to open");
+                    return None;
+                }
+            },
+        };
+
+        Some(DownloadResponse {
+            payload,
+            mime_type,
+            file_name,
+        })
     }
 
     /// Number of downloads currently registered.
@@ -150,12 +202,48 @@ impl std::fmt::Debug for DownloadService {
     }
 }
 
-/// The bytes and headers for one served download.
-#[derive(Debug, Clone)]
+/// The payload and headers for one served download.
+#[derive(Debug)]
 pub struct DownloadResponse {
-    pub bytes: Vec<u8>,
+    pub payload: DownloadPayload,
     pub mime_type: String,
     pub file_name: String,
+}
+
+/// The content of a download — either buffered bytes or a lazy stream.
+pub enum DownloadPayload {
+    Bytes(Vec<u8>),
+    Stream(ByteStream),
+}
+
+impl DownloadPayload {
+    /// Collect the payload into a `Vec<u8>`, draining the stream if needed.
+    ///
+    /// For tests and small consumers that want the whole body in memory.
+    pub async fn collect(self) -> Result<Vec<u8>, QueryError> {
+        match self {
+            DownloadPayload::Bytes(bytes) => Ok(bytes),
+            DownloadPayload::Stream(mut stream) => {
+                use futures::StreamExt;
+                let mut buf = Vec::new();
+                while let Some(chunk) = stream.next().await {
+                    buf.extend_from_slice(&chunk?);
+                }
+                Ok(buf)
+            }
+        }
+    }
+}
+
+impl std::fmt::Debug for DownloadPayload {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DownloadPayload::Bytes(bytes) => {
+                f.debug_struct("Bytes").field("len", &bytes.len()).finish()
+            }
+            DownloadPayload::Stream(_) => f.debug_struct("Stream").finish(),
+        }
+    }
 }
 
 /// Wrap a typed async byte producer into a [`DownloadFactory`].
@@ -167,6 +255,22 @@ where
     Arc::new(move || {
         let fut = factory();
         Box::pin(fut)
+    })
+}
+
+/// Wrap a typed async stream producer into a [`StreamFactory`].
+pub fn stream_download_factory<F, Fut, S>(factory: F) -> StreamFactory
+where
+    F: Fn() -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<S, QueryError>> + Send + 'static,
+    S: Stream<Item = Result<Bytes, QueryError>> + Send + 'static,
+{
+    Arc::new(move || {
+        let fut = factory();
+        Box::pin(async move {
+            let stream = fut.await?;
+            Ok(Box::pin(stream) as ByteStream)
+        })
     })
 }
 
@@ -216,8 +320,11 @@ mod tests {
             "registering must not generate the bytes"
         );
 
-        let response = service.take_bytes(handle.download_id()).await.unwrap();
-        assert_eq!(response.bytes, b"generated".to_vec());
+        let response = service.take(handle.download_id()).await.unwrap();
+        assert_eq!(
+            response.payload.collect().await.unwrap(),
+            b"generated".to_vec()
+        );
         assert_eq!(response.mime_type, "application/pdf");
         assert_eq!(response.file_name, "report.pdf");
         assert_eq!(calls.load(Ordering::SeqCst), 1);
@@ -237,7 +344,7 @@ mod tests {
         drop(handle);
         assert_eq!(service.len(), 0);
         assert!(
-            service.take_bytes(id).await.is_none(),
+            service.take(id).await.is_none(),
             "an unregistered download must not be served"
         );
     }
@@ -246,13 +353,110 @@ mod tests {
     async fn test_unknown_id_and_failing_factory_both_yield_none() {
         let service = Arc::new(DownloadService::new("conn-1"));
 
-        assert!(service.take_bytes(Uuid::new_v4()).await.is_none());
+        assert!(service.take(Uuid::new_v4()).await.is_none());
 
         let (handle, _url) = service.add_download(
             download_factory(|| async { Err(QueryError::new("generation failed")) }),
             "text/plain",
             "bad.txt",
         );
-        assert!(service.take_bytes(handle.download_id()).await.is_none());
+        assert!(service.take(handle.download_id()).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_stream_download_serves_its_chunks_in_order() {
+        let service = Arc::new(DownloadService::new("conn-1"));
+        let (_handle, url) = service.add_stream_download(
+            stream_download_factory(|| async {
+                Ok(futures::stream::iter(vec![
+                    Ok(Bytes::from("id,name\n")),
+                    Ok(Bytes::from("1,alice")),
+                ]))
+            }),
+            "text/csv",
+            "export.csv",
+        );
+
+        assert!(
+            url.starts_with("/rusty/download/conn-1/"),
+            "unexpected url: {url}"
+        );
+
+        let id = url.rsplit('/').next().unwrap();
+        let download_id = Uuid::parse_str(id).unwrap();
+        let response = service.take(download_id).await.unwrap();
+
+        assert_eq!(response.mime_type, "text/csv");
+        assert_eq!(response.file_name, "export.csv");
+        assert_eq!(
+            response.payload.collect().await.unwrap(),
+            b"id,name\n1,alice".to_vec()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_stream_factory_is_lazy_and_its_handle_unregisters() {
+        let service = Arc::new(DownloadService::new("conn-1"));
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        let factory = {
+            let calls = calls.clone();
+            stream_download_factory(move || {
+                let calls = calls.clone();
+                async move {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(futures::stream::iter(vec![Ok(Bytes::from("chunk"))]))
+                }
+            })
+        };
+        let (handle, _url) = service.add_stream_download(factory, "text/plain", "x.txt");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            0,
+            "registering must not open the stream"
+        );
+
+        let id = handle.download_id();
+        let _response = service.take(id).await.unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        drop(handle);
+        assert_eq!(service.len(), 0);
+        assert!(service.take(id).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_stream_factory_error_yields_none_and_chunk_error_surfaces_on_collect() {
+        let service = Arc::new(DownloadService::new("conn-1"));
+
+        // A factory that fails to open yields None.
+        let (handle, _url) = service.add_stream_download(
+            stream_download_factory(|| async {
+                Err::<futures::stream::Empty<Result<Bytes, QueryError>>, _>(QueryError::new(
+                    "open failed",
+                ))
+            }),
+            "text/plain",
+            "bad.txt",
+        );
+        assert!(service.take(handle.download_id()).await.is_none());
+
+        // A chunk error mid-stream is invisible to take and surfaces on collect.
+        let (_handle, url) = service.add_stream_download(
+            stream_download_factory(|| async {
+                Ok(futures::stream::iter(vec![
+                    Ok(Bytes::from("good")),
+                    Err(QueryError::new("chunk error")),
+                ]))
+            }),
+            "text/plain",
+            "partial.txt",
+        );
+        let id = Uuid::parse_str(url.rsplit('/').next().unwrap()).unwrap();
+        let response = service.take(id).await.unwrap();
+        assert!(
+            response.payload.collect().await.is_err(),
+            "chunk error should surface on collect"
+        );
     }
 }

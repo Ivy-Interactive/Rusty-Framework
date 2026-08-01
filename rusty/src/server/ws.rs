@@ -1,4 +1,5 @@
 use axum::{
+    body::Body,
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     extract::{Path, State},
     http::{header, StatusCode},
@@ -16,7 +17,7 @@ use uuid::Uuid;
 use crate::core::runtime::RuntimeMessage;
 use crate::views::view::View;
 
-use super::download::DownloadService;
+use super::download::{DownloadPayload, DownloadService};
 use super::session::AppSessionStore;
 
 /// Messages sent from client to server.
@@ -196,8 +197,13 @@ async fn download_handler(
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    let Some(response) = download_service.take_bytes(download_id).await else {
+    let Some(response) = download_service.take(download_id).await else {
         return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let body = match response.payload {
+        DownloadPayload::Bytes(bytes) => Body::from(bytes),
+        DownloadPayload::Stream(stream) => Body::from_stream(stream),
     };
 
     (
@@ -208,7 +214,7 @@ async fn download_handler(
                 format!("attachment; filename=\"{}\"", response.file_name),
             ),
         ],
-        response.bytes,
+        body,
     )
         .into_response()
 }

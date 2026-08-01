@@ -7,6 +7,10 @@ import React, { FormEvent, useState, KeyboardEvent, ReactNode } from "react";
 import { getHeight, getWidth } from "@/lib/styles";
 import { Densities } from "@/types/density";
 import { cn } from "@/lib/utils";
+// This file was split out of ChatMessageWidget.tsx to keep ChatWidget lazy-loadable, and the split
+// is load-bearing: nothing eager may import a runtime value from this file. Referencing a type
+// across the split is free, so keep this import type-only. See README.md, "Module Graph and Lazy
+// Loading".
 import type { ChatMessageWidgetProps } from "./ChatMessageWidget";
 
 interface ChatWidgetProps {
