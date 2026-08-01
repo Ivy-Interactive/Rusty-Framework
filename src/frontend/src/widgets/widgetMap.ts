@@ -36,9 +36,10 @@ import {
   ResizablePanelWidget,
 } from "@/widgets/layouts/ResizablePanelGroupWidget";
 import { FloatingPanelWidget } from "@/widgets/layouts/FloatingPanelWidget";
-// Imported from the concrete module, not "@/widgets/lists": that barrel also re-exports the
-// lazy-loaded ListWidget, and going through it would defeat its code-split. See README.md,
-// "Module Graph and Lazy Loading".
+// Imported from the concrete module rather than the "@/widgets/lists" barrel. The barrel no longer
+// re-exports the lazy-loaded ListWidget, so either form works today, but importing the concrete
+// module keeps this eager import safe if the barrel ever grows again. See README.md, "Module Graph
+// and Lazy Loading".
 import { ListItemWidget } from "@/widgets/lists/ListItemWidget";
 import { TreeWidget } from "@/widgets/tree";
 import { TextBlockWidget } from "@/widgets/primitives/TextBlockWidget";

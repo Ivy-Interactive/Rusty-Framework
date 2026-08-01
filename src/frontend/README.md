@@ -157,9 +157,12 @@ where this goes wrong.
 
 ### Two ways the edge gets created
 
-**1. Through a sibling barrel.** `widgetMap.ts` imports an eager widget from a barrel
-(`@/widgets/lists`), and that barrel also re-exports the lazy widget. Importing _anything_ from the
-barrel drags in everything it re-exports. Fix by importing the concrete module instead:
+**1. Through a sibling barrel.** `widgetMap.ts` imports an eager widget from a barrel, and that
+barrel also re-exports the lazy widget. Importing _anything_ from the barrel drags in everything it
+re-exports. This is what happened with `@/widgets/lists`: it re-exported both `ListItemWidget` (eager)
+and `ListWidget` (lazy), so importing the former pulled in the latter. There are two fixes, and both
+are in place for lists - import the concrete module at the call site, and keep the lazy widget out of
+the barrel:
 
 ```ts
 import { ListItemWidget } from "@/widgets/lists/ListItemWidget"; // not "@/widgets/lists"
@@ -183,11 +186,15 @@ in fact does - `ChatWidget.tsx` imports `Button` and `ChatInput` that way.
 
 ### How to check
 
-**Do not rely on the build log.** Rolldown has an `INEFFECTIVE_DYNAMIC_IMPORT` warning for this, and
-older toolchains printed it, but on the pinned `vite-plus` (0.2.7) a deliberately broken tree builds
-with **exit 0 and no warning at all** - not on stdout, and not via an `onwarn` handler. Chunk size is
-not a signal either: the defeated chunk is still emitted at close to its normal size (13,952 bytes vs
-13,925 correct), so the historical "69-byte facade" symptom no longer appears.
+**Do not rely on the build failing.** `vite.config.mjs` has a `fail-on-ineffective-dynamic-import`
+plugin that collects Rolldown's `INEFFECTIVE_DYNAMIC_IMPORT` warnings and fails the build if any
+arrive. It is a good guard to keep, but on the pinned `vite-plus` (0.2.7) that warning is not emitted:
+a deliberately broken tree builds with **exit 0** and the gate never fires. Older toolchains did print
+it, so treat the gate as protection for a future upgrade, not as today's check.
+
+Chunk size is not a signal either. The defeated chunk is still emitted at close to its normal size
+(13,952 bytes vs 13,925 correct), so the "69-byte facade" symptom described in older notes no longer
+appears.
 
 What does work is asking whether the entry statically imports the widget's chunk. After `pnpm run
 build`:
@@ -206,6 +213,10 @@ Silence means the widget is genuinely lazy. The distinction is that a lazy edge 
 double-quoted `import"./ChatWidget-<hash>.js"` or `from"./ChatWidget-<hash>.js"`. Widen the `for`
 list to check other widgets; names that share a chunk with another widget have no chunk of their own
 and will simply not match.
+
+A cheaper guard for a barrel you have already fixed is a unit test asserting the barrel does not
+mention the lazy widget - see `src/widgets/lists/index.test.ts`. That catches a re-added `export`
+without a build, though only for the barrel it names.
 
 ### Barrels with no importers are inert
 
