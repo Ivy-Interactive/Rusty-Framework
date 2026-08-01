@@ -30,14 +30,20 @@ grouped in `renovate.json` as the "vite-plus toolchain" so they bump together:
 toolchain. Five entries carry them — `devDependencies.vite`,
 `devDependencies.vite-plus`, `devDependencies.vitest`, `pnpm.overrides.vite` and
 `pnpm.overrides.vitest` — and all five must move to the same versions in one
-change. Renovate does this automatically once its GitHub App is installed on the
-repo; until then, keep them in lockstep by hand.
+change. Renovate does this automatically **only once its GitHub App is installed on this
+repo** — as of 2026-08-01 it is not, on any Ivy-Interactive repo, so the five
+entries must be kept in lockstep by hand. `renovate.json` is a declaration of
+intent until then. CI's `renovate-liveness` job fails once the config is 14 days
+old with no Renovate issue or PR: either install
+https://github.com/apps/renovate or delete `renovate.json`. Do not leave it as
+decoration — `Ivy-Web/.github/renovate.json` has sat inert since a 2024-03
+`create-turbo` scaffold and has never opened a single PR.
 
 ## CI
 
-`.github/workflows/ci.yml` runs build, test, clippy and `cargo fmt --all -- --check`
-on every push to `main` and every PR. All four report independently — a failure in one
-does not skip the rest.
+`.github/workflows/ci.yml` runs build, test, clippy, `cargo fmt --all -- --check`,
+frontend checks, and renovate-liveness on every push to `main` and every PR. All checks
+report independently — a failure in one does not skip the rest.
 
 `main` has no branch protection and no rulesets, so a PR can be (and routinely is)
 merged before its check run finishes. Between 19:15Z and 20:52Z on 2026-08-01,
