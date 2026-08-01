@@ -110,6 +110,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Format check
+        run: pnpm format:check
+
   renovate-liveness:
     runs-on: ubuntu-latest
     permissions:

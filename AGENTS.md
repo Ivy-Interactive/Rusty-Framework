@@ -30,8 +30,7 @@ Vite+ toolchain, pnpm@10.33.0. Always `pnpm run <script>` or `pnpm exec vp` —
 a globally installed `vp` may be an older version and `vp migrate` would
 downgrade the project config.
 
-CI's `frontend` job runs the first four of the frontend commands above; `pnpm format:check`
-is local-only.
+CI's `frontend` job runs all five frontend commands above, plus a `check:toolchain` lockstep check.
 
 `vite-plus`, `@voidzero-dev/vite-plus-core` (aliased as `vite`) and `vitest` are
 grouped in `renovate.json` as the "vite-plus toolchain" so they bump together:
