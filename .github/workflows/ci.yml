@@ -40,6 +40,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: cargo fmt --all -- --check
 
+      - name: Pre-commit hook
+        if: ${{ !cancelled() }}
+        run: sh scripts/test-precommit-hook.sh
+
   alert-on-red-main:
     needs: build
     if: ${{ failure() && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
