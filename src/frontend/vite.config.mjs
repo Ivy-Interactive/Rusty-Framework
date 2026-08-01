@@ -206,10 +206,6 @@ function manualChunks(id) {
 
 export default defineConfig({
   base: "./",
-  staged: {
-    "src/**/*.{ts,tsx,js,jsx}": "vp check --fix",
-  },
-
   plugins: [react(), tailwindcss(), mkcert(), injectMeta(mode), failOnIneffectiveDynamicImport],
   server: {
     proxy: {

@@ -85,11 +85,54 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Lint
-        run: pnpm lint --max-warnings=0
+      - name: Toolchain lockstep
+        run: pnpm run check:toolchain
+
+      - name: Lint  # --max-warnings=0 lives in the lint script; vp rejects the flag twice
+        run: pnpm lint
 
       - name: Typecheck
         run: pnpm exec tsc -b
 
       - name: Test
         run: pnpm test
+
+  renovate-liveness:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Renovate config must not be decoration
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          GRACE_DAYS: "14"
+        run: |
+          set -euo pipefail
+          if [ ! -f renovate.json ]; then
+            echo "No renovate.json - nothing to prove."
+            exit 0
+          fi
+          artifacts=$(gh api "repos/$REPO/issues?state=all&creator=app%2Frenovate&per_page=1" --jq 'length')
+          if [ "$artifacts" -gt 0 ]; then
+            echo "Renovate App is live (found bot issue/PR)."
+            exit 0
+          fi
+          added=$(gh api "repos/$REPO/commits?path=renovate.json&per_page=100" \
+                    --jq '[.[].commit.committer.date] | last')
+          if [ -z "$added" ] || [ "$added" = "null" ]; then
+            echo "::warning::Cannot date renovate.json; skipping age check."
+            exit 0
+          fi
+          age=$(( ( $(date -u +%s) - $(date -u -d "$added" +%s) ) / 86400 ))
+          echo "renovate.json added $added (${age}d ago); 0 Renovate artifacts."
+          if [ "$age" -ge "$GRACE_DAYS" ]; then
+            echo "::error::renovate.json has existed for ${age}d and Renovate has never run."
+            echo "Install https://github.com/apps/renovate on $REPO, or delete renovate.json."
+            echo "Ivy-Web/.github/renovate.json sat inert for ~28 months - do not repeat that."
+            exit 1
+          fi
+          echo "::warning::renovate.json present but Renovate has never run (${age}d of ${GRACE_DAYS}d grace). Install https://github.com/apps/renovate on $REPO, or delete the file."

@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vp dev",
     "build": "tsc -b && vp build",
-    "lint": "vp lint . --format=default",
+    "lint": "vp lint . --format=default --max-warnings=0",
     "lint:fix": "vp lint . --fix --format=default",
     "format": "vp fmt .",
     "format:check": "vp fmt --check .",
+    "check:toolchain": "node scripts/check-toolchain-lockstep.mjs",
     "preview": "vp preview",
     "test": "vp test",
     "e2e": "playwright test",
@@ -130,7 +131,7 @@
   },
   "lint-staged": {
     "src/**/*.{js,jsx,ts,tsx}": [
-      "vp lint --fix",
+      "vp lint --fix --max-warnings=0",
       "vp fmt"
     ],
     "*.{json,css,md,html}": [

@@ -55,8 +55,15 @@
   <div id="app">Connecting...</div>
   <script>
     const app = document.getElementById('app');
-    const wsPort = new URLSearchParams(window.location.search).get('port') || window.location.port;
-    const wsUrl = `ws://${window.location.hostname}:${wsPort}/ws`;
+    const pageQuery = new URLSearchParams(window.location.search);
+    const wsPort = pageQuery.get('port') || window.location.port;
+    const wsAppId = pageQuery.get('appId');
+    const wsUrl = `ws://${window.location.hostname}:${wsPort}/ws`
+      + (wsAppId ? `?appId=${encodeURIComponent(wsAppId)}` : '');
+
+    // Message counters so E2E specs can distinguish a full Refresh from Update patches.
+    window.rustyRefreshCount = 0;
+    window.rustyUpdateCount = 0;
 
     let ws;
     function connect() {
@@ -87,6 +94,14 @@
         }));
       }
     }
+
+    // `state` must always be present: ClientMessage::Navigate has no serde default,
+    // so a message omitting it fails to deserialize and is dropped without a reply.
+    window.rustyNavigate = function (appId) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ method: 'navigate', appId: appId, state: null }));
+      }
+    };
 
     // `Color` serializes untagged: a named colour or hex arrives as a string,
     // an rgba arrives as `{r, g, b, a}`.
@@ -540,18 +555,6 @@
           if (node.child) el.appendChild(renderWidget(node.child));
           break;
         }
-        default: {
-          el.textContent = `[Unknown widget: ${type}]`;
-          // Still render children if present
-          (node.children || []).forEach(child => {
-            el.appendChild(renderWidget(child));
-          });
-          break;
-        }
-      }
-          }
-          break;
-        }
         case 'spacer': {
           el.classList.add('spacer');
           break;
@@ -600,111 +603,6 @@
           glyph.classList.add('icon-glyph');
           glyph.textContent = node.name || '';
           el.appendChild(glyph);
-          break;
-        }
-        case 'image': {
-          const img = document.createElement('img');
-          img.src = node.src || '';
-          img.alt = node.alt || '';
-          if (node.width) img.style.width = node.width;
-          if (node.height) img.style.height = node.height;
-          el.appendChild(img);
-          break;
-        }
-        case 'avatar': {
-          el.classList.add('avatar');
-          el.setAttribute('data-size', node.size || 'normal');
-          if (node.image) {
-            const img = document.createElement('img');
-            img.src = node.image;
-            img.alt = node.fallback || '';
-            el.appendChild(img);
-          } else {
-            const initials = document.createElement('span');
-            initials.setAttribute('data-fallback', 'true');
-            initials.textContent = node.fallback || '';
-            el.appendChild(initials);
-          }
-          break;
-        }
-        case 'callout': {
-          el.classList.add('callout');
-          el.setAttribute('data-variant', node.variant || 'info');
-          if (node.title) {
-            const t = document.createElement('div');
-            t.classList.add('callout-title');
-            t.textContent = node.title;
-            el.appendChild(t);
-          }
-          (node.children || []).forEach(child => {
-            el.appendChild(renderWidget(child));
-          });
-          break;
-        }
-        case 'skeleton': {
-          el.classList.add('skeleton');
-          if (node.width) el.style.width = node.width;
-          if (node.height) el.style.height = node.height;
-          break;
-        }
-        case 'expandable': {
-          el.classList.add('expandable');
-          const expanded = !!node.expanded;
-          el.setAttribute('data-expanded', expanded ? 'true' : 'false');
-          const header = document.createElement('button');
-          header.setAttribute('data-expandable-header', 'true');
-          header.textContent = node.title || '';
-          if (node.hasOnToggle && node.id) {
-            header.addEventListener('click', () => {
-              sendEvent(node.id, 'toggle', { value: !expanded });
-            });
-          }
-          el.appendChild(header);
-          const body = document.createElement('div');
-          body.setAttribute('data-expandable-body', 'true');
-          if (!expanded) body.style.display = 'none';
-          (node.children || []).forEach(child => {
-            body.appendChild(renderWidget(child));
-          });
-          el.appendChild(body);
-          break;
-        }
-        case 'list': {
-          el.classList.add('list');
-          (node.items || []).forEach(item => {
-            el.appendChild(renderWidget(item));
-          });
-          break;
-        }
-        case 'list_item': {
-          el.classList.add('list-item');
-          if (node.icon) {
-            const icon = document.createElement('span');
-            icon.setAttribute('data-icon-name', node.icon);
-            icon.textContent = node.icon;
-            el.appendChild(icon);
-          }
-          const title = document.createElement('span');
-          title.setAttribute('data-list-item-title', 'true');
-          title.textContent = node.title || '';
-          el.appendChild(title);
-          if (node.subtitle) {
-            const sub = document.createElement('span');
-            sub.setAttribute('data-list-item-subtitle', 'true');
-            sub.textContent = node.subtitle;
-            el.appendChild(sub);
-          }
-          if (node.hasOnClick && node.id) {
-            el.style.cursor = 'pointer';
-            el.addEventListener('click', () => sendEvent(node.id, 'click', {}));
-          }
-          break;
-        }
-        case 'text_area': {
-          if (node.label) {
-            const lbl = document.createElement('span');
-            lbl.classList.add('field-label');
-            lbl.textContent = node.label;
           break;
         }
         case 'image': {
@@ -1006,10 +904,12 @@
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
         if (msg.method === 'refresh') {
+          window.rustyRefreshCount++;
           currentTree = msg.widgets;
           app.innerHTML = '';
           app.appendChild(renderWidget(currentTree));
         } else if (msg.method === 'update') {
+          window.rustyUpdateCount++;
           if (currentTree && msg.patches) {
             for (const patch of msg.patches) {
               applyPatch(currentTree, patch);

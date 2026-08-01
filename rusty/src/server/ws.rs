@@ -1,4 +1,5 @@
 use axum::{
+    body::Body,
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     extract::{Path, Query, State},
     http::{header, StatusCode},
@@ -18,7 +19,7 @@ use crate::core::runtime::RuntimeMessage;
 use crate::core::services::ServiceRegistry;
 use crate::views::view::View;
 
-use super::download::DownloadService;
+use super::download::{DownloadPayload, DownloadService};
 use super::session::{AppSession, AppSessionStore};
 
 /// Messages sent from client to server.
@@ -69,6 +70,15 @@ pub struct ConnectParams {
 /// from the local network. Callers that need external access opt in explicitly
 /// via [`RustyServer::with_bind_address`].
 pub const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1";
+
+/// Minimum interval between pushes on the rebuild-signal arm.
+///
+/// The signal itself is not rate limited: an isolated state change still drains
+/// and pushes immediately (leading edge). This only caps a *sustained* producer
+/// (a `use_interval` at 1 ms, or a task calling `State::set` in a loop), which
+/// would otherwise take the session write lock and re-diff the whole tree on
+/// every set. One frame at 60 Hz is finer than a browser can paint.
+const MIN_PUSH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(16);
 
 /// Application state shared across WebSocket connections.
 pub struct AppState {
@@ -261,8 +271,13 @@ async fn download_handler(
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    let Some(response) = download_service.take_bytes(download_id).await else {
+    let Some(response) = download_service.take(download_id).await else {
         return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let body = match response.payload {
+        DownloadPayload::Bytes(bytes) => Body::from(bytes),
+        DownloadPayload::Stream(stream) => Body::from_stream(stream),
     };
 
     (
@@ -273,7 +288,7 @@ async fn download_handler(
                 format!("attachment; filename=\"{}\"", response.file_name),
             ),
         ],
-        response.bytes,
+        body,
     )
         .into_response()
 }
@@ -318,7 +333,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, app_id: Option<S
     // Woken when a rebuild is queued outside the request path (async hooks
     // resolving, spawned tasks calling State::set). No polling: the task parks
     // until a producer actually signals.
+    // `mut` because a Navigate swaps the runtime out from under us; see below.
     let mut rebuild_notify = session_arc.read().await.runtime.rebuild_notifier();
+    // Leading-edge debounce for the push arm: `next_push` starts in the past so
+    // the first signal drains at once, and each drain arms the next window.
+    let mut push_pending = false;
+    let mut next_push = tokio::time::Instant::now();
 
     // Process incoming messages using this session's isolated runtime
     loop {
@@ -393,7 +413,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, app_id: Option<S
                     _ => break, // Connection closed or error
                 }
             }
-            _ = rebuild_notify.notified() => {
+            // Record that work is queued; the drain happens in the arm below so a
+            // hot producer cannot make us re-diff the tree once per `State::set`.
+            _ = rebuild_notify.notified(), if !push_pending => {
+                push_pending = true;
+            }
+            _ = tokio::time::sleep_until(next_push), if push_pending => {
+                push_pending = false;
+                next_push = tokio::time::Instant::now() + MIN_PUSH_INTERVAL;
                 let mut session = session_arc.write().await;
                 if session.runtime.process_pending().await {
                     if let Some(tree) = session.runtime.current_tree().await {
@@ -478,6 +505,122 @@ mod tests {
             }
             other => panic!("expected Navigate, got {other:?}"),
         }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn push_debounce_drains_the_first_signal_immediately() {
+        let notify = std::sync::Arc::new(tokio::sync::Notify::new());
+        let mut push_pending = false;
+        let mut next_push = tokio::time::Instant::now();
+        let started = tokio::time::Instant::now();
+
+        notify.notify_one();
+
+        tokio::select! {
+            _ = notify.notified(), if !push_pending => {
+                push_pending = true;
+            }
+            _ = tokio::time::sleep_until(next_push), if push_pending => {
+                push_pending = false;
+                next_push = tokio::time::Instant::now() + MIN_PUSH_INTERVAL;
+            }
+        }
+
+        assert!(push_pending, "latch arm should have won");
+
+        tokio::select! {
+            _ = notify.notified(), if !push_pending => {
+                unreachable!();
+            }
+            _ = tokio::time::sleep_until(next_push), if push_pending => {}
+        }
+
+        assert_eq!(
+            started.elapsed(),
+            std::time::Duration::ZERO,
+            "drain should not have waited"
+        );
+    }
+
+    #[tokio::test]
+    async fn push_debounce_caps_the_drain_rate_under_a_hot_producer() {
+        let notify = std::sync::Arc::new(tokio::sync::Notify::new());
+        let notify_clone = notify.clone();
+        let signal_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let signal_count_clone = signal_count.clone();
+        let mut push_pending = false;
+        let mut next_push = tokio::time::Instant::now();
+        let mut drains = 0;
+
+        let producer = tokio::spawn(async move {
+            for _ in 0..5000 {
+                notify_clone.notify_one();
+                signal_count_clone.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                tokio::task::yield_now().await;
+            }
+        });
+
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(200);
+        loop {
+            tokio::select! {
+                _ = notify.notified(), if !push_pending => {
+                    push_pending = true;
+                }
+                _ = tokio::time::sleep_until(next_push), if push_pending => {
+                    push_pending = false;
+                    next_push = tokio::time::Instant::now() + MIN_PUSH_INTERVAL;
+                    drains += 1;
+                }
+                _ = tokio::time::sleep_until(deadline) => {
+                    break;
+                }
+            }
+        }
+
+        let _ = producer.await;
+        let signals = signal_count.load(std::sync::atomic::Ordering::Relaxed);
+        let window = std::time::Duration::from_millis(200);
+        let max_drains = (window.as_millis() / MIN_PUSH_INTERVAL.as_millis()) + 2;
+        assert!(
+            drains <= max_drains as usize,
+            "drains ({drains}) should be capped by the window"
+        );
+        assert!(
+            signals > drains * 4,
+            "not enough signals ({signals}) to prove coalescing � producer may be broken"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn push_debounce_never_loses_a_signal_across_the_window() {
+        let notify = std::sync::Arc::new(tokio::sync::Notify::new());
+        let mut push_pending = false;
+        let next_push = tokio::time::Instant::now();
+
+        notify.notify_one();
+
+        tokio::select! {
+            _ = notify.notified(), if !push_pending => {
+                push_pending = true;
+            }
+            _ = tokio::time::sleep_until(next_push), if push_pending => {}
+        }
+
+        notify.notify_one();
+
+        tokio::select! {
+            _ = notify.notified(), if !push_pending => {
+                unreachable!("latch arm should be disabled");
+            }
+            _ = tokio::time::sleep_until(next_push), if push_pending => {}
+        }
+
+        let resolved =
+            tokio::time::timeout(std::time::Duration::from_millis(10), notify.notified()).await;
+        assert!(
+            resolved.is_ok(),
+            "notified() should still resolve � the stored permit survived"
+        );
     }
 
     #[test]
