@@ -49,6 +49,12 @@ install https://github.com/apps/renovate or delete `renovate.json`. Do not
 leave it as decoration — `Ivy-Web/.github/renovate.json` has sat inert since a
 2024-03 `create-turbo` scaffold and has never opened a single PR.
 
+`pnpm run check:toolchain` compares the five manifest entries to each other; it reads no
+`node_modules` and passes on a stale install. `pnpm run check:installed` compares the four exact
+toolchain pins against what is actually installed, and runs automatically before `build`, `lint` and
+`test`. If it fails, run `pnpm install` — a populated `node_modules` is not evidence of a current
+one.
+
 Git hooks are husky (`.husky/pre-commit` + `package.json`'s `lint-staged`). Vite+'s `vp staged` / `staged` config is intentionally unused — do not run `vp config`, which would install a competing `.vite-hooks` tree.
 
 ## CI
