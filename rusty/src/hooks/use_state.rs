@@ -103,6 +103,7 @@ pub fn use_state<T: Send + Sync + Clone + 'static>(ctx: &mut BuildContext, initi
 mod tests {
     use super::*;
     use crate::hooks::hook_store::HookStore;
+    use futures::FutureExt;
 
     #[test]
     fn test_state_get_set() {
