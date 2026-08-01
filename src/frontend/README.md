@@ -92,7 +92,7 @@ We use a Husky npm package to set up the repo's pre-commit hook. It lints and fo
 
 The active hook is `.husky/pre-commit` (`core.hooksPath` points at `.husky/_`), and its frontend step reads per-glob commands from the `lint-staged` key in `package.json`. Edit those two files. Vite+'s own `vp staged` runner is deliberately **not** used: husky's installer rewrites `core.hooksPath` on every `pnpm install`, so the two cannot coexist, and `.husky/pre-commit` also carries a merge-conflict-marker check that a `staged` glob map cannot express.
 
-For Rust files, the hook runs `rustfmt --edition 2021 --config skip_children=true` on staged `.rs` files. Fully staged files are auto-formatted and re-added; partially staged files (where the worktree has unstaged edits) are checked only and will block the commit if unformatted. If `rustfmt` is not on `PATH`, the Rust block is skipped.
+For Rust files, the hook runs `rustfmt --edition 2021 --config skip_children=true` on staged `.rs` files. Fully staged files are auto-formatted and re-added; partially staged files (where the worktree has unstaged edits) are checked as they exist in the index, never rewritten, and will block the commit with "Run: cargo fmt --all" if unformatted. If `rustfmt` is not on `PATH`, the Rust block is skipped.
 
 Hooks are installed automatically by the `prepare` script when you run `pnpm install` in `src/frontend`. Ideally, you would not then need to run any formatting or lint commands as it will be done for you. In case you want to manually run them, you still can.
 
