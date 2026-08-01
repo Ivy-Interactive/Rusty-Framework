@@ -26,6 +26,13 @@
     code { font-family: monospace; background: #f5f5f5; padding: 2px 4px; border-radius: 2px; }
     label.checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
     .field-label { display: block; font-size: 0.85em; font-weight: 600; margin-bottom: 4px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; background: #eee; }
+    .badge[data-variant="outline"] { background: transparent; border: 1px solid #999; }
+    .dialog-box { border: 1px solid #999; border-radius: 8px; padding: 16px; background: #fff; }
+    .dialog-title { font-weight: bold; margin-bottom: 8px; }
+    .dialog-footer { margin-top: 12px; display: flex; gap: 8px; }
+    table { border-collapse: collapse; }
+    th, td { border: 1px solid #ddd; padding: 4px 8px; text-align: left; }
   </style>
 </head>
 <body>
@@ -237,6 +244,94 @@
             node.footer.forEach(child => f.appendChild(renderWidget(child)));
             el.appendChild(f);
           }
+          break;
+        }
+        case 'badge': {
+          const badge = document.createElement('span');
+          badge.classList.add('badge');
+          badge.textContent = node.label || '';
+          if (node.variant) badge.setAttribute('data-variant', node.variant);
+          if (node.color) badge.setAttribute('data-color', node.color);
+          el.appendChild(badge);
+          break;
+        }
+        case 'progress': {
+          if (node.label) {
+            const lbl = document.createElement('span');
+            lbl.classList.add('field-label');
+            lbl.textContent = node.label;
+            el.appendChild(lbl);
+          }
+          const bar = document.createElement('progress');
+          if (node.indeterminate) {
+            el.setAttribute('data-indeterminate', 'true');
+          } else {
+            bar.value = node.value != null ? node.value : 0;
+            bar.max = node.max != null ? node.max : 1;
+          }
+          el.appendChild(bar);
+          break;
+        }
+        case 'table': {
+          const table = document.createElement('table');
+          if (node.sortBy) {
+            el.setAttribute('data-sort-by', node.sortBy);
+            el.setAttribute('data-sort-ascending', String(!!node.sortAscending));
+          }
+          const columns = node.columns || [];
+          const thead = document.createElement('thead');
+          const headRow = document.createElement('tr');
+          columns.forEach(col => {
+            const th = document.createElement('th');
+            th.textContent = col.label;
+            th.setAttribute('data-key', col.key);
+            if (col.sortable) th.setAttribute('data-sortable', 'true');
+            headRow.appendChild(th);
+          });
+          thead.appendChild(headRow);
+          table.appendChild(thead);
+          const tbody = document.createElement('tbody');
+          (node.rows || []).forEach(row => {
+            const tr = document.createElement('tr');
+            columns.forEach(col => {
+              const td = document.createElement('td');
+              const cell = row[col.key];
+              td.textContent = cell != null ? String(cell) : '';
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+          table.appendChild(tbody);
+          el.appendChild(table);
+          break;
+        }
+        case 'dialog': {
+          el.setAttribute('data-open', String(!!node.open));
+          if (!node.open) el.style.display = 'none';
+          const box = document.createElement('div');
+          box.classList.add('dialog-box');
+          if (node.title) {
+            const t = document.createElement('div');
+            t.classList.add('dialog-title');
+            t.textContent = node.title;
+            box.appendChild(t);
+          }
+          (node.children || []).forEach(child => {
+            box.appendChild(renderWidget(child));
+          });
+          if (node.footer) {
+            const f = document.createElement('div');
+            f.classList.add('dialog-footer');
+            node.footer.forEach(child => f.appendChild(renderWidget(child)));
+            box.appendChild(f);
+          }
+          el.appendChild(box);
+          break;
+        }
+        case 'tooltip': {
+          el.setAttribute('title', node.content || '');
+          el.setAttribute('data-tooltip', node.content || '');
+          if (node.child) el.appendChild(renderWidget(node.child));
           break;
         }
         default: {
