@@ -168,6 +168,12 @@ lazy one. Fix by splitting the eager exports into their own files, as `chat/` do
 `ChatMessageWidget.tsx`, `ChatLoadingWidget.tsx` and `ChatStatusWidget.tsx`. Once split, keep the
 lazy widget out of the barrel: `chat/index.ts` deliberately does not re-export `ChatWidget`.
 
+**3. Through a third-party barrel read as a record.** Reading a third-party barrel's exports object
+(like `icons` from `lucide-react`) prevents tree-shaking because the object access forces retention
+of all exports. Fix by extracting the dynamic lookup into its own module and loading it with
+`lazyWithRetry`, as `LucideIcon.tsx` does for the `icons` record. Named imports from the same package
+are free and can stay eager - `import { Folder } from "lucide-react"` tree-shakes correctly.
+
 Type-only references are free, in either direction. A `type` does not exist at runtime, so it creates
 no edge, which is why `ChatWidget.tsx` may safely import `ChatMessageWidgetProps` from the file it was
 split out of. Write it as `import type { ... }`: a plain `import` of a type-only binding is erased too
