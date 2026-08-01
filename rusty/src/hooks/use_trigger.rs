@@ -15,9 +15,10 @@ use crate::views::view::{BuildContext, Element};
 /// way Ivy hands its `IState<bool>` to the factory.
 ///
 /// Ivy nests the element in a `FuncView` so triggering does not re-render the
-/// parent. Rusty's `child_view` needs a `HookStore` the caller must thread, which
-/// a hook cannot do, so the state lives in the calling view and the parent
-/// rebuild that `State::set` already triggers re-renders the element.
+/// parent. Here the state lives in the calling view instead, and the parent
+/// rebuild that `State::set` already triggers re-renders the element. Rusty's
+/// `child_view` would also work now that the parent persists the child's
+/// `HookStore` itself, but scoping the rebuild is a separate change.
 pub fn use_trigger<T, F>(
     ctx: &mut BuildContext,
     factory: F,
