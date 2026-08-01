@@ -18,16 +18,12 @@ impl View for CounterApp {
             .child(
                 Layout::horizontal()
                     .gap(8.0)
-                    .child(
-                        Button::new("Increment").on_click(move || {
-                            count_inc.update(|v| v + 1);
-                        }),
-                    )
-                    .child(
-                        Button::new("Decrement").on_click(move || {
-                            count_dec.update(|v| v - 1);
-                        }),
-                    )
+                    .child(Button::new("Increment").on_click(move || {
+                        count_inc.update(|v| v + 1);
+                    }))
+                    .child(Button::new("Decrement").on_click(move || {
+                        count_dec.update(|v| v - 1);
+                    }))
                     .child(
                         Button::new("Reset")
                             .variant(button::ButtonVariant::Ghost)
@@ -43,5 +39,11 @@ impl View for CounterApp {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
-    RustyServer::new(3000, || CounterApp).serve().await
+
+    let port = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(3000);
+
+    RustyServer::new(port, || CounterApp).serve().await
 }

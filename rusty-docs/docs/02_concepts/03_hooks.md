@@ -15,18 +15,31 @@ Hooks let you add state and side effects to views. They must be called in the sa
 | `use_reducer` | Dispatch-based state management |
 | `use_interval` | Run a callback on a timer |
 | `use_context` / `create_context` | Dependency injection through the view tree |
+| `use_service` | Resolve a registered service by type |
+| `use_query` | Fetch and cache data, revalidating stale entries in the background |
+| `use_mutation` | Mutate, revalidate or invalidate a cached query from outside it |
+| `use_signal` | Send and receive messages between views, per session or server-wide |
+| `use_download` | Register a download and get the URL to serve it from |
+| `use_alert` | Show a modal alert and get the user's answer in a callback |
+| `use_trigger` | Render an element on demand, carrying a value to its factory |
 
 ### Usage Pattern
 
-All hooks take `&mut BuildContext` as the first argument:
+All hooks take `&mut BuildContext` as the first argument. `use_state` and `use_ref` take the initial *value*, not a closure that produces it:
 
 ```rust
 fn build(&self, ctx: &mut BuildContext) -> Element {
-    let count = use_state(ctx, || 0i32);
-    let name = use_ref(ctx, || String::from("world"));
+    let count = use_state(ctx, 0i32);
+    let name = use_ref(ctx, String::from("world"));
 
     // ...
 }
+```
+
+Every hook in this table is demonstrated in the `hooks_showcase` example:
+
+```bash
+cargo run --example hooks_showcase
 ```
 
 ### Rules of Hooks

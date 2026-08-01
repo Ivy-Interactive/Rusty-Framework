@@ -21,7 +21,7 @@ Progress::indeterminate()     // Animated loading bar
 ### Example
 
 ```rust
-let progress = use_state(ctx, || 0.0f64);
+let progress = use_state(ctx, 0.0f64);
 
 Layout::vertical()
     .gap(8.0)

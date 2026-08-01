@@ -1,59 +1,13 @@
-import { ChatBubble, ChatBubbleMessage } from "@/components/ChatBubble";
 import { ChatInput } from "@/components/ChatInput";
 import { ChatMessageList } from "@/components/ChatMessageList";
 import { useEventHandler } from "@/components/event-handler";
-import { MessageLoading } from "@/components/MessageLoading";
 import { Button } from "@/components/ui/button";
 import { CornerDownLeft, Square } from "lucide-react";
 import React, { FormEvent, useState, KeyboardEvent, ReactNode } from "react";
-import { User, LucideStars } from "lucide-react";
-import { TextShimmer } from "@/components/TextShimmer";
 import { getHeight, getWidth } from "@/lib/styles";
 import { Densities } from "@/types/density";
 import { cn } from "@/lib/utils";
-
-interface ChatMessageWidgetProps {
-  id: number;
-  children?: ReactNode[];
-  sender: "User" | "Assistant";
-  density?: Densities;
-}
-
-export const ChatMessageWidget: React.FC<ChatMessageWidgetProps> = ({
-  id,
-  sender = "User",
-  children,
-  density = Densities.Medium,
-}) => {
-  const avatarClass =
-    density === Densities.Small
-      ? "h-7 w-7 p-1.5"
-      : density === Densities.Large
-        ? "h-11 w-11 p-2.5"
-        : "h-9 w-9 p-2";
-
-  return (
-    <ChatBubble key={id} variant={sender === "User" ? "sent" : "received"}>
-      {sender == "Assistant" && (
-        <div className={cn("bg-muted rounded-full flex items-center justify-center", avatarClass)}>
-          <LucideStars />
-        </div>
-      )}
-
-      {sender == "User" && (
-        <div className={cn("bg-muted rounded-full flex items-center justify-center", avatarClass)}>
-          <User />
-        </div>
-      )}
-
-      <ChatBubbleMessage variant={sender === "User" ? "sent" : "received"}>
-        <div>{children}</div>
-      </ChatBubbleMessage>
-    </ChatBubble>
-  );
-};
-
-ChatMessageWidget.displayName = "ChatMessageWidget";
+import type { ChatMessageWidgetProps } from "./ChatMessageWidget";
 
 interface ChatWidgetProps {
   id: string;
@@ -194,28 +148,5 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
         </form>
       </div>
     </div>
-  );
-};
-
-type ChatLoadingWidgetProps = Record<never, never>;
-
-export const ChatLoadingWidget: React.FC<ChatLoadingWidgetProps> = () => {
-  return <MessageLoading />;
-};
-
-ChatLoadingWidget.displayName = "ChatLoadingWidget";
-
-interface ChatStatusWidgetProps {
-  text: string;
-}
-
-export const ChatStatusWidget: React.FC<ChatStatusWidgetProps> = ({ text }) => {
-  return (
-    <TextShimmer
-      duration={1.2}
-      className="font-medium [--base-color:#0bae59] [--base-gradient-color:#15d06e]"
-    >
-      {text}
-    </TextShimmer>
   );
 };

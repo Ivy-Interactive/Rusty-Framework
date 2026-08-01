@@ -194,8 +194,7 @@ impl<'a> BuildContext<'a> {
         BuildContext::with_services(store, rebuild_tx, view_id, Arc::new(ServiceRegistry::new()))
     }
 
-    /// Build a context backed by a server-level service registry, so views built
-    /// through it can resolve services with `use_service`.
+    /// Create a context with an explicit service registry.
     pub fn with_services(
         store: &'a mut HookStore,
         rebuild_tx: Option<tokio::sync::mpsc::Sender<ViewId>>,

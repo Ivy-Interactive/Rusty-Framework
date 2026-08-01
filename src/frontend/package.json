@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vp dev",
     "build": "tsc -b && vp build",
-    "lint": "vp lint .",
-    "lint:fix": "vp lint . --fix",
+    "lint": "vp lint . --format=default",
+    "lint:fix": "vp lint . --fix --format=default",
     "format": "vp fmt .",
     "format:check": "vp fmt --check .",
     "preview": "vp preview",
@@ -123,10 +123,10 @@
     "lint-staged": "^16.4.0",
     "tailwindcss": "4.1.16",
     "typescript": "7.0.2",
-    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.1",
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.7",
     "vite-plugin-mkcert": "^1.17.10",
-    "vite-plus": "0.2.1",
-    "vitest": "4.1.9"
+    "vite-plus": "0.2.7",
+    "vitest": "4.1.10"
   },
   "lint-staged": {
     "src/**/*.{js,jsx,ts,tsx}": [
@@ -148,8 +148,8 @@
       "minimatch": "9.0.7",
       "remark-mermaid-plugin>mermaid": "11.12.1",
       "rollup": ">=4.59.0",
-      "vite": "npm:@voidzero-dev/vite-plus-core@0.2.1",
-      "vitest": "4.1.9"
+      "vite": "npm:@voidzero-dev/vite-plus-core@0.2.7",
+      "vitest": "4.1.10"
     }
   }
 }

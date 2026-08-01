@@ -5,8 +5,10 @@ State management in Rusty-Framework is hook-based. The primary hook is `use_stat
 ### use_state
 
 ```rust
-let count = use_state(ctx, || 0i32);
+let count = use_state(ctx, 0i32);
 ```
+
+The second argument is the initial value itself, not a closure producing it.
 
 Returns a `State<T>` handle that is `Clone`, `Send`, and `Sync`.
 
@@ -30,10 +32,10 @@ Both `.set()` and `.update()` trigger a rebuild of the owning view.
 `State<T>` is cheaply cloneable. Clone it before moving into event closures:
 
 ```rust
-let count = use_state(ctx, || 0i32);
+let count = use_state(ctx, 0i32);
 let count_for_click = count.clone();
 
-Button::new(format!("Count: {}", count.get()))
+Button::new(&format!("Count: {}", count.get()))
     .on_click(move || {
         count_for_click.update(|v| v + 1);
     })
@@ -45,7 +47,7 @@ Button::new(format!("Count: {}", count.get()))
 For state that should NOT trigger rebuilds:
 
 ```rust
-let render_count = use_ref(ctx, || 0u32);
+let render_count = use_ref(ctx, 0u32);
 render_count.update(|v| v + 1);
 ```
 
