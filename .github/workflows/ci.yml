@@ -169,6 +169,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # Cheapest possible gate, so it runs before any cargo or npm setup: the
+      # harness renderer has been left unparseable twice by hand-resolved merge
+      # conflicts, and a SyntaxError there silently zeroes every test below.
+      - name: Check harness renderer parses
+        working-directory: .
+        run: node scripts/check-harness-script.js
+
       - name: Build widget harness
         working-directory: .
         run: cargo build --bin widget_harness
