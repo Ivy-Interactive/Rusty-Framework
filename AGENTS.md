@@ -30,8 +30,10 @@ grouped in `renovate.json` as the "vite-plus toolchain" so they bump together:
 toolchain. Five entries carry them — `devDependencies.vite`,
 `devDependencies.vite-plus`, `devDependencies.vitest`, `pnpm.overrides.vite` and
 `pnpm.overrides.vitest` — and all five must move to the same versions in one
-change. Renovate does this automatically once its GitHub App is installed on the
-repo; until then, keep them in lockstep by hand.
+change. `pnpm run check:toolchain` enforces this in CI: it compares all five
+entries and checks `vitest` against the pin `vite-plus` declares on the registry.
+It does not check freshness, which remains Renovate's job once its App is
+installed.
 
 ## CI
 

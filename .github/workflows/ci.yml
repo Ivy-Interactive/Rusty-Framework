@@ -85,6 +85,9 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: Toolchain lockstep
+        run: pnpm run check:toolchain
+
       - name: Lint
         run: pnpm lint --max-warnings=0
 
