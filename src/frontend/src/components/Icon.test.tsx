@@ -1,16 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import React, { act } from "react";
+import React from "react";
+import { flushSync } from "react-dom";
 import { createRoot, Root } from "react-dom/client";
 import Icon from "./Icon";
 
 let container: HTMLDivElement;
 let root: Root;
-
-function mount(element: React.ReactElement) {
-  act(() => {
-    root.render(element);
-  });
-}
 
 beforeEach(() => {
   container = document.createElement("div");
@@ -19,43 +14,49 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  act(() => {
-    root.unmount();
-  });
+  root.unmount();
   container.remove();
 });
 
 describe("Icon", () => {
   it("renders None icon synchronously", () => {
-    mount(<Icon name="None" />);
+    flushSync(() => {
+      root.render(<Icon name="None" />);
+    });
     const svg = container.querySelector("svg");
     expect(svg).not.toBeNull();
     expect(svg!.classList.contains("invisible")).toBe(true);
   });
 
   it("renders IvyCorner icon synchronously", () => {
-    mount(<Icon name="IvyCorner" />);
+    flushSync(() => {
+      root.render(<Icon name="IvyCorner" />);
+    });
     const svg = container.querySelector("svg");
     expect(svg).not.toBeNull();
     expect(svg!.getAttribute("viewBox")).toBe("0 0 12 12");
   });
 
   it("renders react-icons synchronously", () => {
-    mount(<Icon name="Google" />);
+    flushSync(() => {
+      root.render(<Icon name="Google" />);
+    });
     const svg = container.querySelector("svg");
     expect(svg).not.toBeNull();
   });
 
-  it("renders lucide icons asynchronously", async () => {
-    mount(<Icon name="Home" />);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+  it("renders Suspense fallback for lucide icons", () => {
+    flushSync(() => {
+      root.render(<Icon name="Home" />);
+    });
     const svg = container.querySelector("svg");
-    expect(svg).not.toBeNull();
+    expect(svg).toBeNull();
   });
 
-  it("renders nothing for unknown icon name", async () => {
-    mount(<Icon name="NotAnIcon" />);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+  it("renders Suspense fallback for unknown icon name", () => {
+    flushSync(() => {
+      root.render(<Icon name="NotAnIcon" />);
+    });
     const svg = container.querySelector("svg");
     expect(svg).toBeNull();
   });
