@@ -560,7 +560,7 @@
           break;
         }
         case 'separator': {
-          const orientation = node.orientation || 'horizontal';
+          const orientation = node.orientation;
           el.setAttribute('data-orientation', orientation);
           el.classList.add('separator');
           if (node.text) {
@@ -786,7 +786,7 @@
           break;
         }
         case 'radio_group': {
-          el.setAttribute('data-orientation', node.orientation || 'vertical');
+          el.setAttribute('data-orientation', node.orientation);
           if (node.label) {
             const lbl = document.createElement('span');
             lbl.classList.add('field-label');
