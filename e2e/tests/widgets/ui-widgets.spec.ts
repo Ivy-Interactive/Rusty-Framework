@@ -80,8 +80,9 @@ test.describe('avatar', () => {
   test('exposes the density as a size', async ({ page }) => {
     await navigateToHarness(page, harness.port);
     const avatars = page.locator('[data-widget-type="avatar"]');
-    // Density serializes camelCase and defaults to `normal`.
-    await expect(avatars.nth(0)).toHaveAttribute('data-size', 'normal');
+    // Density is Option<Density> in Rust: unset serializes to null, so the
+    // attribute is absent rather than defaulted. Matches the icon arm above.
+    await expect(avatars.nth(0)).not.toHaveAttribute('data-size', /.*/);
     await expect(avatars.nth(1)).toHaveAttribute('data-size', 'compact');
     await expect(avatars.nth(2)).toHaveAttribute('data-size', 'comfortable');
   });

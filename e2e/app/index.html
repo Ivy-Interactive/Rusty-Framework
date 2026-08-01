@@ -236,7 +236,7 @@
           break;
         }
         case 'layout': {
-          el.setAttribute('data-direction', node.direction || 'vertical');
+          el.setAttribute('data-direction', node.direction);
           if (node.gap) el.style.gap = node.gap + 'px';
           if (node.padding) el.style.padding = node.padding + 'px';
           if (node.width) el.style.width = node.width;
@@ -289,7 +289,7 @@
             const th = document.createElement('th');
             th.textContent = c.header || '';
             th.setAttribute('data-column-name', c.name || '');
-            th.setAttribute('data-column-type', c.type || 'text');
+            th.setAttribute('data-column-type', c.type);
             if (c.sortDirection && c.sortDirection !== 'none') {
               th.setAttribute('data-sort-direction', c.sortDirection);
             }
@@ -322,7 +322,7 @@
           table.appendChild(tbody);
 
           if (node.config) {
-            el.setAttribute('data-selection-mode', node.config.selectionMode || 'cells');
+            el.setAttribute('data-selection-mode', node.config.selectionMode);
             if (node.config.showSearch) el.setAttribute('data-show-search', 'true');
           }
           el.appendChild(table);
@@ -373,7 +373,7 @@
           break;
         }
         case 'diff_view': {
-          el.setAttribute('data-view-type', node.viewType || 'unified');
+          el.setAttribute('data-view-type', node.viewType);
           if (node.language) el.setAttribute('data-language', node.language);
           if (node.oldRevision) el.setAttribute('data-old-revision', node.oldRevision);
           if (node.newRevision) el.setAttribute('data-new-revision', node.newRevision);
@@ -387,12 +387,12 @@
         }
         case 'qr_code': {
           el.setAttribute('data-value', node.value || '');
-          el.setAttribute('data-error-correction-level', node.errorCorrectionLevel || 'low');
+          el.setAttribute('data-error-correction-level', node.errorCorrectionLevel);
           if (node.pixelSize != null) el.setAttribute('data-pixel-size', String(node.pixelSize));
           break;
         }
         case 'activity_heatmap': {
-          el.setAttribute('data-interval', node.interval || 'daily');
+          el.setAttribute('data-interval', node.interval);
           el.setAttribute('data-day-count', String((node.data || []).length));
           if (node.valueLabel) el.setAttribute('data-value-label', node.valueLabel);
           if (node.startDate) el.setAttribute('data-start-date', node.startDate);
@@ -412,7 +412,7 @@
         case 'terminal': {
           if (node.cols != null) el.setAttribute('data-cols', String(node.cols));
           if (node.rows != null) el.setAttribute('data-rows', String(node.rows));
-          el.setAttribute('data-cursor-style', node.cursorStyle || 'block');
+          el.setAttribute('data-cursor-style', node.cursorStyle);
           el.setAttribute('data-scrollback', String(node.scrollback == null ? 1000 : node.scrollback));
           if (node.closed) el.setAttribute('data-closed', 'true');
           if (node.loading) el.setAttribute('data-loading', 'true');
@@ -557,7 +557,7 @@
           break;
         }
         case 'separator': {
-          const orientation = node.orientation || 'horizontal';
+          const orientation = node.orientation;
           el.setAttribute('data-orientation', orientation);
           el.classList.add('separator');
           if (node.text) {
@@ -613,7 +613,7 @@
         }
         case 'avatar': {
           el.classList.add('avatar');
-          el.setAttribute('data-size', node.size || 'normal');
+          if (node.size) el.setAttribute('data-size', node.size);
           if (node.image) {
             const img = document.createElement('img');
             img.src = node.image;
@@ -629,7 +629,7 @@
         }
         case 'callout': {
           el.classList.add('callout');
-          el.setAttribute('data-variant', node.variant || 'info');
+          el.setAttribute('data-variant', node.variant);
           if (node.title) {
             const t = document.createElement('div');
             t.classList.add('callout-title');
@@ -718,7 +718,7 @@
         }
         case 'avatar': {
           el.classList.add('avatar');
-          el.setAttribute('data-size', node.size || 'normal');
+          if (node.size) el.setAttribute('data-size', node.size);
           if (node.image) {
             const img = document.createElement('img');
             img.src = node.image;
@@ -734,7 +734,7 @@
         }
         case 'callout': {
           el.classList.add('callout');
-          el.setAttribute('data-variant', node.variant || 'info');
+          el.setAttribute('data-variant', node.variant);
           if (node.title) {
             const t = document.createElement('div');
             t.classList.add('callout-title');
@@ -888,7 +888,7 @@
           break;
         }
         case 'radio_group': {
-          el.setAttribute('data-orientation', node.orientation || 'vertical');
+          el.setAttribute('data-orientation', node.orientation);
           if (node.label) {
             const lbl = document.createElement('span');
             lbl.classList.add('field-label');
