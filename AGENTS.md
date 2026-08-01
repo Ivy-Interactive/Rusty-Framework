@@ -15,3 +15,9 @@ cargo clippy --workspace --all-targets -- -D warnings
 Vite+ toolchain, pnpm@10.33.0. Always `pnpm run <script>` or `pnpm exec vp` —
 a globally installed `vp` may be an older version and `vp migrate` would
 downgrade the project config.
+
+CI runs these three, from `src/frontend`, after `pnpm install --frozen-lockfile`:
+
+pnpm lint --max-warnings=0
+pnpm exec tsc -b
+pnpm test
