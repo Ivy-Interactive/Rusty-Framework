@@ -8,7 +8,7 @@ use std::path::PathBuf;
 #[command(name = "widget_harness")]
 #[command(about = "Launch a minimal Rusty app exercising a single widget for E2E testing")]
 struct Cli {
-    /// Widget to test (button, text, text_input, number_input, select, checkbox, layout, card, query)
+    /// Widget to test. Run with an unknown name to list the accepted values.
     widget: String,
 
     /// Port to listen on (0 for auto-assign)
@@ -271,6 +271,376 @@ impl View for QueryApp {
     }
 }
 
+struct SpacerApp;
+
+impl View for SpacerApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        Layout::horizontal()
+            .gap(0.0)
+            .child(TextBlock::paragraph("Left"))
+            .child(Spacer::new())
+            .child(TextBlock::paragraph("Right"))
+            .into()
+    }
+}
+
+struct SeparatorApp;
+
+impl View for SeparatorApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        Layout::vertical()
+            .gap(8.0)
+            .child(TextBlock::h1("Separator Test"))
+            .child(Separator::horizontal())
+            .child(Separator::horizontal().text("OR"))
+            .child(
+                Layout::horizontal()
+                    .gap(8.0)
+                    .child(TextBlock::paragraph("Before"))
+                    .child(Separator::vertical())
+                    .child(TextBlock::paragraph("After")),
+            )
+            .into()
+    }
+}
+
+struct ContainerApp;
+
+impl View for ContainerApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Container Test"))
+            .child(
+                Container::new()
+                    .padding(16.0)
+                    .border(true)
+                    .rounded(true)
+                    .child(TextBlock::paragraph("Bordered and rounded")),
+            )
+            .child(
+                Container::new()
+                    .width(Size::Px(200.0))
+                    .height(Size::Px(80.0))
+                    .background(Color::hex("#eef4ff"))
+                    .child(TextBlock::paragraph("Fixed size")),
+            )
+            .into()
+    }
+}
+
+struct IconApp;
+
+impl View for IconApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        Layout::horizontal()
+            .gap(8.0)
+            .child(IconWidget::new("check"))
+            .child(IconWidget::new("alert").size(32.0))
+            .child(IconWidget::new("info").color(Color::hex("#0066cc")))
+            .into()
+    }
+}
+
+struct ImageApp;
+
+impl View for ImageApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        // A data URI keeps the harness from reaching out over the network.
+        let pixel =
+            "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Image Test"))
+            .child(Image::new(pixel).alt("A transparent pixel"))
+            .child(
+                Image::new(pixel)
+                    .alt("Sized pixel")
+                    .width(Size::Px(64.0))
+                    .height(Size::Px(64.0)),
+            )
+            .into()
+    }
+}
+
+struct AvatarApp;
+
+impl View for AvatarApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        Layout::horizontal()
+            .gap(8.0)
+            .child(Avatar::new("AB"))
+            .child(Avatar::new("CD").size(Density::Compact))
+            .child(Avatar::new("EF").size(Density::Comfortable))
+            .into()
+    }
+}
+
+struct CalloutApp;
+
+impl View for CalloutApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Callout Test"))
+            .child(
+                Callout::info()
+                    .title("Heads up")
+                    .child(TextBlock::paragraph("An informational note.")),
+            )
+            .child(Callout::success().child(TextBlock::paragraph("It worked.")))
+            .child(Callout::warning().child(TextBlock::paragraph("Careful.")))
+            .child(Callout::error().child(TextBlock::paragraph("It broke.")))
+            .into()
+    }
+}
+
+struct SkeletonApp;
+
+impl View for SkeletonApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        Layout::vertical()
+            .gap(8.0)
+            .child(
+                Skeleton::new()
+                    .width(Size::Px(240.0))
+                    .height(Size::Px(16.0)),
+            )
+            .child(
+                Skeleton::new()
+                    .width(Size::Percent(60.0))
+                    .height(Size::Px(16.0)),
+            )
+            .into()
+    }
+}
+
+struct ExpandableApp;
+
+impl View for ExpandableApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let expanded = use_state(ctx, false);
+        let expanded_val = expanded.get();
+        let expanded_clone = expanded.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Expandable Test"))
+            .child(
+                Expandable::new("Details")
+                    .expanded(expanded_val)
+                    .child(TextBlock::paragraph("Hidden body content"))
+                    .on_toggle(move |value: bool| {
+                        expanded_clone.set(value);
+                    }),
+            )
+            .child(TextBlock::paragraph(&format!("Expanded: {}", expanded_val)))
+            .into()
+    }
+}
+
+struct ListApp;
+
+impl View for ListApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let selected = use_state(ctx, String::new());
+        let selected_val = selected.get();
+        let inbox = selected.clone();
+        let drafts = selected.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("List Test"))
+            .child(
+                List::new()
+                    .item(
+                        ListItem::new("Inbox")
+                            .subtitle("3 unread")
+                            .icon("mail")
+                            .on_click(move || inbox.set("Inbox".to_string())),
+                    )
+                    .item(
+                        ListItem::new("Drafts").on_click(move || drafts.set("Drafts".to_string())),
+                    )
+                    .item(ListItem::new("Archive")),
+            )
+            .child(TextBlock::paragraph(&format!("Selected: {}", selected_val)))
+            .into()
+    }
+}
+
+struct TextAreaApp;
+
+impl View for TextAreaApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let value = use_state(ctx, String::new());
+        let value_val = value.get();
+        let value_clone = value.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("TextArea Test"))
+            .child(
+                TextArea::new()
+                    .label("Message")
+                    .placeholder("Say something")
+                    .rows(4)
+                    .value(&value_val)
+                    .on_change(move |v: String| {
+                        value_clone.set(v);
+                    }),
+            )
+            .child(TextBlock::paragraph(&format!("Value: {}", value_val)))
+            .into()
+    }
+}
+
+struct SliderApp;
+
+impl View for SliderApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let value = use_state(ctx, 25.0f64);
+        let value_val = value.get();
+        let value_clone = value.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Slider Test"))
+            .child(
+                Slider::new(value_val)
+                    .label("Volume")
+                    .min(0.0)
+                    .max(100.0)
+                    .step(5.0)
+                    .on_change(move |v: f64| {
+                        value_clone.set(v);
+                    }),
+            )
+            .child(TextBlock::paragraph(&format!("Value: {}", value_val)))
+            .into()
+    }
+}
+
+struct DateInputApp;
+
+impl View for DateInputApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let value = use_state(ctx, String::new());
+        let value_val = value.get();
+        let value_clone = value.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("DateInput Test"))
+            .child(
+                DateInput::new()
+                    .label("Due date")
+                    .min("2026-01-01")
+                    .max("2026-12-31")
+                    .value(&value_val)
+                    .on_change(move |v: String| {
+                        value_clone.set(v);
+                    }),
+            )
+            .child(TextBlock::paragraph(&format!("Value: {}", value_val)))
+            .into()
+    }
+}
+
+struct ColorInputApp;
+
+impl View for ColorInputApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let value = use_state(ctx, "#000000".to_string());
+        let value_val = value.get();
+        let value_clone = value.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("ColorInput Test"))
+            .child(
+                ColorInput::new()
+                    .label("Accent")
+                    .value(&value_val)
+                    .on_change(move |v: String| {
+                        value_clone.set(v);
+                    }),
+            )
+            .child(TextBlock::paragraph(&format!("Value: {}", value_val)))
+            .into()
+    }
+}
+
+fn size_options() -> Vec<SelectOption> {
+    vec![
+        SelectOption {
+            value: "s".to_string(),
+            label: "Small".to_string(),
+        },
+        SelectOption {
+            value: "m".to_string(),
+            label: "Medium".to_string(),
+        },
+        SelectOption {
+            value: "l".to_string(),
+            label: "Large".to_string(),
+        },
+    ]
+}
+
+struct RadioGroupApp;
+
+impl View for RadioGroupApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let value = use_state(ctx, String::new());
+        let value_val = value.get();
+        let value_clone = value.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("RadioGroup Test"))
+            .child(
+                RadioGroup::new(size_options())
+                    .label("Size")
+                    .value(&value_val)
+                    .on_change(move |v: String| {
+                        value_clone.set(v);
+                    }),
+            )
+            .child(TextBlock::paragraph(&format!("Value: {}", value_val)))
+            .into()
+    }
+}
+
+struct MultiSelectApp;
+
+impl View for MultiSelectApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let values = use_state(ctx, Vec::<String>::new());
+        let values_val = values.get();
+        let values_clone = values.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("MultiSelect Test"))
+            .child(
+                MultiSelect::new(size_options())
+                    .label("Sizes")
+                    .placeholder("Pick sizes")
+                    .values(values_val.clone())
+                    .on_change(move |v: Vec<String>| {
+                        values_clone.set(v);
+                    }),
+            )
+            .child(TextBlock::paragraph(&format!(
+                "Values: {}",
+                values_val.join(",")
+            )))
+            .into()
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
@@ -290,8 +660,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "layout" => RustyServer::new(port, || LayoutApp),
         "card" => RustyServer::new(port, || CardApp),
         "query" => RustyServer::new(port, || QueryApp),
+        "spacer" => RustyServer::new(port, || SpacerApp),
+        "separator" => RustyServer::new(port, || SeparatorApp),
+        "container" => RustyServer::new(port, || ContainerApp),
+        "icon" => RustyServer::new(port, || IconApp),
+        "image" => RustyServer::new(port, || ImageApp),
+        "avatar" => RustyServer::new(port, || AvatarApp),
+        "callout" => RustyServer::new(port, || CalloutApp),
+        "skeleton" => RustyServer::new(port, || SkeletonApp),
+        "expandable" => RustyServer::new(port, || ExpandableApp),
+        "list" => RustyServer::new(port, || ListApp),
+        "text_area" => RustyServer::new(port, || TextAreaApp),
+        "slider" => RustyServer::new(port, || SliderApp),
+        "date_input" => RustyServer::new(port, || DateInputApp),
+        "color_input" => RustyServer::new(port, || ColorInputApp),
+        "radio_group" => RustyServer::new(port, || RadioGroupApp),
+        "multi_select" => RustyServer::new(port, || MultiSelectApp),
         other => {
             eprintln!("Unknown widget: {}", other);
+            eprintln!(
+                "Known widgets: button, text, text_input, number_input, select, checkbox, \
+                 layout, card, query, spacer, separator, container, icon, image, avatar, \
+                 callout, skeleton, expandable, list, text_area, slider, date_input, \
+                 color_input, radio_group, multi_select"
+            );
             std::process::exit(1);
         }
     };
