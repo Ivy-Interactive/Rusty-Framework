@@ -211,7 +211,7 @@ export const widgetMap = {
     })),
   ),
   "Ivy.DateTimeInput": lazyWithRetry(() =>
-    import("@/widgets/inputs/DateTimeInputWidget").then((m) => ({
+    import("@/widgets/inputs/DateTimeInputWidget/DateTimeInputWidget").then((m) => ({
       default: m.DateTimeInputWidget,
     })),
   ),
@@ -262,7 +262,7 @@ export const widgetMap = {
     })),
   ),
   "Ivy.ContentInput": lazyWithRetry(() =>
-    import("@/widgets/inputs/ContentInputWidget").then((m) => ({
+    import("@/widgets/inputs/ContentInputWidget/ContentInputWidget").then((m) => ({
       default: m.ContentInputWidget,
     })),
   ),
