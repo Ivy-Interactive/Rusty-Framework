@@ -18,15 +18,21 @@ Hooks let you add state and side effects to views. They must be called in the sa
 
 ### Usage Pattern
 
-All hooks take `&mut BuildContext` as the first argument:
+All hooks take `&mut BuildContext` as the first argument. `use_state` and `use_ref` take the initial *value*, not a closure that produces it:
 
 ```rust
 fn build(&self, ctx: &mut BuildContext) -> Element {
-    let count = use_state(ctx, || 0i32);
-    let name = use_ref(ctx, || String::from("world"));
+    let count = use_state(ctx, 0i32);
+    let name = use_ref(ctx, String::from("world"));
 
     // ...
 }
+```
+
+Every hook in this table is demonstrated in the `hooks_showcase` example:
+
+```bash
+cargo run --example hooks_showcase
 ```
 
 ### Rules of Hooks
