@@ -472,7 +472,8 @@ mod tests {
         F: Fn() -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<T, QueryError>> + Send + 'static,
     {
-        let mut ctx = BuildContext::new(store, None).with_services(Arc::clone(services));
+        let mut ctx =
+            BuildContext::with_services(store, None, uuid::Uuid::nil(), Arc::clone(services));
         use_query(&mut ctx, key, fetcher, options)
     }
 

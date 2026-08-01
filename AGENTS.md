@@ -1,16 +1,15 @@
-# AGENTS.md
+# Rusty-Framework Agent Instructions
 
-## Build
-cargo build --workspace
+## Verify
 
-## Test
+Rusty-Framework uses a hybrid Rust/Node frontend stack. Always verify both sides:
+
 cargo test --workspace
 
-## Format
 cargo fmt --all
 
 ## Lint
-cargo clippy --workspace -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 
 ## Frontend (src/frontend)
 Vite+ toolchain, pnpm@10.33.0. Always `pnpm run <script>` or `pnpm exec vp` —
