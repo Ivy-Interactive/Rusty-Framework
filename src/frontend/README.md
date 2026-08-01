@@ -177,18 +177,17 @@ in fact does - `ChatWidget.tsx` imports `Button` and `ChatInput` that way.
 
 ### How to check
 
-**Do not rely on the build failing.** `vite.config.mjs` has a `fail-on-ineffective-dynamic-import`
-plugin that collects Rolldown's `INEFFECTIVE_DYNAMIC_IMPORT` warnings and fails the build if any
-arrive. It is a good guard to keep, but on the pinned `vite-plus` (0.2.7) that warning is not emitted:
-a deliberately broken tree builds with **exit 0** and the gate never fires. Older toolchains did print
-it, so treat the gate as protection for a future upgrade, not as today's check.
+**The build will fail.** `vite.config.mjs` has an `assert-lazy-chunks` plugin that reads the module
+graph in `generateBundle` and fails the build if any first-party dynamically imported module lands in
+a chunk that is also statically imported (exit 1, with the source file and chunk name reported). This
+replaces an earlier plugin that promoted Rolldown's `INEFFECTIVE_DYNAMIC_IMPORT` warning: that warning
+is never emitted on `vite-plus` 0.2.7, so the old gate was silent while both known bug shapes built
+with exit 0. Reading the module graph works on the pinned version.
 
-Chunk size is not a signal either. The defeated chunk is still emitted at close to its normal size
-(13,952 bytes vs 13,925 correct), so the "69-byte facade" symptom described in older notes no longer
-appears.
+Chunk size is not a signal. The defeated chunk is still emitted at close to its normal size (13,952
+bytes vs 13,925 correct), so the "69-byte facade" symptom described in older notes no longer appears.
 
-What does work is asking whether the entry statically imports the widget's chunk. After `pnpm run
-build`:
+To manually confirm a specific widget is lazy after `pnpm run build`:
 
 ```bash
 cd src/frontend
