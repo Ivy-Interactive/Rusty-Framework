@@ -9,12 +9,15 @@ pub mod widgets;
 pub mod prelude {
     pub use crate::core::{Runtime, ViewTree};
     pub use crate::hooks::{
-        create_context, use_callback, use_context, use_effect, use_effect_with_deps, use_interval,
-        use_memo, use_reducer, use_ref, use_state, DynEq, Ref, State,
+        create_context, use_callback, use_context, use_effect, use_effect_with_deps, use_form,
+        use_interval, use_memo, use_reducer, use_ref, use_state, DynEq, Ref, State,
     };
     pub use crate::server::RustyServer;
     pub use crate::shared::{Align, Color, Density, Icon, Justify, NamedColor, Size};
-    pub use crate::views::{BuildContext, Element, View};
+    pub use crate::views::{
+        BuildContext, Element, FieldRender, FormBuilder, ModelSetter, SubmitHandler, Validator,
+        View,
+    };
     pub use crate::widgets::*;
 }
 
