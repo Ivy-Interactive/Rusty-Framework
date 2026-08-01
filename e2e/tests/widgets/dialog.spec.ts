@@ -42,12 +42,7 @@ test('dialog trigger button is present and clickable', async ({ page }) => {
   await expect(page.locator('button:has-text("Open dialog")')).toBeEnabled();
 });
 
-// The three tests below drive the dialog through a click. They are blocked by a
-// pre-existing framework bug: Runtime::run() is never spawned for a WebSocket
-// session, so RuntimeMessage::Event is queued on a channel nobody reads and no
-// update patch is ever sent. The same defect fails button.spec.ts and
-// input.spec.ts on main. Un-fixme once the event loop is driven.
-test.fixme('clicking the trigger opens the dialog', async ({ page }) => {
+test('clicking the trigger opens the dialog', async ({ page }) => {
   await navigateToHarness(page, harness.port);
 
   await page.locator('button:has-text("Open dialog")').click();
@@ -59,7 +54,7 @@ test.fixme('clicking the trigger opens the dialog', async ({ page }) => {
   await expect(page.locator('text=Are you sure about this?')).toBeVisible();
 });
 
-test.fixme('dialog footer holds the close button', async ({ page }) => {
+test('dialog footer holds the close button', async ({ page }) => {
   await navigateToHarness(page, harness.port);
 
   await page.locator('button:has-text("Open dialog")').click();
@@ -67,7 +62,7 @@ test.fixme('dialog footer holds the close button', async ({ page }) => {
   await expect(footer.locator('button:has-text("Close")')).toBeVisible({ timeout: 5000 });
 });
 
-test.fixme('close button closes the dialog', async ({ page }) => {
+test('close button closes the dialog', async ({ page }) => {
   await navigateToHarness(page, harness.port);
 
   await page.locator('button:has-text("Open dialog")').click();
