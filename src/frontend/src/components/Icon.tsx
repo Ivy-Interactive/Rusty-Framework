@@ -1,5 +1,7 @@
 import { cn } from "@/lib/utils";
-import { Folder, icons } from "lucide-react";
+import { lazyWithRetry } from "@/lib/lazyWithRetry";
+import { Suspense } from "react";
+import { Folder } from "lucide-react";
 import {
   FaGoogle,
   FaAmazon,
@@ -46,6 +48,8 @@ const IvyCornerIcon = ({ size, color, style, className }: IconProps) => (
   </svg>
 );
 
+const LucideIcon = lazyWithRetry(() => import("./LucideIcon"));
+
 const Icon: React.FC<IconProps> = ({ name, color, size, className, style }) => {
   if (name === "None") {
     return <Folder className="invisible" size={size} />;
@@ -84,12 +88,15 @@ const Icon: React.FC<IconProps> = ({ name, color, size, className, style }) => {
     return <ReactIcon style={style} color={color} size={size} className={cn(className)} />;
   }
 
-  if (!name || !(name in icons)) {
+  if (!name) {
     return null;
   }
 
-  const LucideIcon = icons[name as keyof typeof icons];
-  return <LucideIcon style={style} color={color} size={size} className={cn(className)} />;
+  return (
+    <Suspense fallback={null}>
+      <LucideIcon name={name} style={style} color={color} size={size} className={cn(className)} />
+    </Suspense>
+  );
 };
 
 export default Icon;

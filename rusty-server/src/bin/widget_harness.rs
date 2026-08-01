@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use rusty::prelude::*;
 use rusty::widgets::badge::BadgeVariant;
 use rusty::widgets::button::ButtonVariant;
@@ -7,12 +7,110 @@ use rusty::widgets::table::Column;
 use serde_json::json;
 use std::path::PathBuf;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+#[value(rename_all = "snake_case")]
+enum WidgetKind {
+    Button,
+    Text,
+    TextInput,
+    NumberInput,
+    Select,
+    Checkbox,
+    Layout,
+    Card,
+    Query,
+    Downloads,
+    DataTable,
+    Form,
+    DiffView,
+    QrCode,
+    ActivityHeatmap,
+    Terminal,
+    RichTextInput,
+    Spacer,
+    Separator,
+    LayoutSizing,
+    Container,
+    Icon,
+    Image,
+    Avatar,
+    Callout,
+    Skeleton,
+    Expandable,
+    List,
+    TextArea,
+    Slider,
+    DateInput,
+    ColorInput,
+    RadioGroup,
+    MultiSelect,
+    Badge,
+    Progress,
+    Table,
+    Dialog,
+    Tooltip,
+}
+
+impl WidgetKind {
+    fn build_app(self, ctx: &mut BuildContext) -> Element {
+        match self {
+            WidgetKind::Button => ButtonApp.build(ctx),
+            WidgetKind::Text => TextApp.build(ctx),
+            WidgetKind::TextInput => TextInputApp.build(ctx),
+            WidgetKind::NumberInput => NumberInputApp.build(ctx),
+            WidgetKind::Select => SelectApp.build(ctx),
+            WidgetKind::Checkbox => CheckboxApp.build(ctx),
+            WidgetKind::Layout => LayoutApp.build(ctx),
+            WidgetKind::Card => CardApp.build(ctx),
+            WidgetKind::Query => QueryApp.build(ctx),
+            WidgetKind::Downloads => DownloadsApp.build(ctx),
+            WidgetKind::DataTable => DataTableApp.build(ctx),
+            WidgetKind::Form => FormApp.build(ctx),
+            WidgetKind::DiffView => DiffViewApp.build(ctx),
+            WidgetKind::QrCode => QrCodeApp.build(ctx),
+            WidgetKind::ActivityHeatmap => ActivityHeatmapApp.build(ctx),
+            WidgetKind::Terminal => TerminalApp.build(ctx),
+            WidgetKind::RichTextInput => RichTextInputApp.build(ctx),
+            WidgetKind::Spacer => SpacerApp.build(ctx),
+            WidgetKind::Separator => SeparatorApp.build(ctx),
+            WidgetKind::LayoutSizing => LayoutSizingApp.build(ctx),
+            WidgetKind::Container => ContainerApp.build(ctx),
+            WidgetKind::Icon => IconApp.build(ctx),
+            WidgetKind::Image => ImageApp.build(ctx),
+            WidgetKind::Avatar => AvatarApp.build(ctx),
+            WidgetKind::Callout => CalloutApp.build(ctx),
+            WidgetKind::Skeleton => SkeletonApp.build(ctx),
+            WidgetKind::Expandable => ExpandableApp.build(ctx),
+            WidgetKind::List => ListApp.build(ctx),
+            WidgetKind::TextArea => TextAreaApp.build(ctx),
+            WidgetKind::Slider => SliderApp.build(ctx),
+            WidgetKind::DateInput => DateInputApp.build(ctx),
+            WidgetKind::ColorInput => ColorInputApp.build(ctx),
+            WidgetKind::RadioGroup => RadioGroupApp.build(ctx),
+            WidgetKind::MultiSelect => MultiSelectApp.build(ctx),
+            WidgetKind::Badge => BadgeApp.build(ctx),
+            WidgetKind::Progress => ProgressApp.build(ctx),
+            WidgetKind::Table => TableApp.build(ctx),
+            WidgetKind::Dialog => DialogApp.build(ctx),
+            WidgetKind::Tooltip => TooltipApp.build(ctx),
+        }
+    }
+}
+
+struct HarnessApp(WidgetKind);
+
+impl View for HarnessApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        self.0.build_app(ctx)
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "widget_harness")]
 #[command(about = "Launch a minimal Rusty app exercising a single widget for E2E testing")]
 struct Cli {
-    /// Widget to test. Run with an unknown name to list the accepted values.
-    widget: String,
+    /// Widget to test
+    widget: WidgetKind,
 
     /// Port to listen on (0 for auto-assign)
     #[arg(short, long, default_value = "0")]
@@ -238,6 +336,44 @@ impl View for CardApp {
 /// Both URLs start as `None` and are filled in by the mount effect, so they
 /// arrive over the WebSocket push path rather than in the first render. The
 /// URLs render as `code` text blocks because there is no anchor widget â€” the
+/// spec reads them out of the DOM and fetches them itself.
+struct DownloadsApp;
+
+impl View for DownloadsApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let stream_url = use_download_stream(
+            ctx,
+            || async {
+                Ok(futures::stream::iter(vec![
+                    Ok(bytes::Bytes::from("chunk-1;")),
+                    Ok(bytes::Bytes::from("chunk-2;")),
+                    Ok(bytes::Bytes::from("chunk-3;")),
+                ]))
+            },
+            "text/csv",
+            "stream-export.csv",
+        );
+        let bytes_url = use_download_bytes(
+            ctx,
+            b"buffered-body".to_vec(),
+            "application/json",
+            "buffered.json",
+        );
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Downloads Test"))
+            .child(TextBlock::code(&stream_url.get().unwrap_or_default()))
+            .child(TextBlock::code(&bytes_url.get().unwrap_or_default()))
+            .into()
+    }
+}
+
+/// Exercises `use_download_stream` and `use_download_bytes`.
+///
+/// Both URLs start as `None` and are filled in by the mount effect, so they
+/// arrive over the WebSocket push path rather than in the first render. The
+/// URLs render as `code` text blocks because there is no anchor widget — the
 /// spec reads them out of the DOM and fetches them itself.
 struct DownloadsApp;
 
@@ -1063,63 +1199,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     let cli = Cli::parse();
 
-    let widget = cli.widget.as_str();
-    let port = cli.port;
+    // clap rejects unknown widget names before we get here, so there is no
+    // unknown-widget arm to write.
+    let widget = cli.widget;
     let static_dir = cli.static_dir;
-
-    let server = match widget {
-        "button" => RustyServer::new(port, || ButtonApp),
-        "text" => RustyServer::new(port, || TextApp),
-        "text_input" => RustyServer::new(port, || TextInputApp),
-        "number_input" => RustyServer::new(port, || NumberInputApp),
-        "select" => RustyServer::new(port, || SelectApp),
-        "checkbox" => RustyServer::new(port, || CheckboxApp),
-        "layout" => RustyServer::new(port, || LayoutApp),
-        "card" => RustyServer::new(port, || CardApp),
-        "query" => RustyServer::new(port, || QueryApp),
-        "downloads" => RustyServer::new(port, || DownloadsApp),
-        "data_table" => RustyServer::new(port, || DataTableApp),
-        "form" => RustyServer::new(port, || FormApp),
-        "diff_view" => RustyServer::new(port, || DiffViewApp),
-        "qr_code" => RustyServer::new(port, || QrCodeApp),
-        "activity_heatmap" => RustyServer::new(port, || ActivityHeatmapApp),
-        "terminal" => RustyServer::new(port, || TerminalApp),
-        "rich_text_input" => RustyServer::new(port, || RichTextInputApp),
-        "spacer" => RustyServer::new(port, || SpacerApp),
-        "separator" => RustyServer::new(port, || SeparatorApp),
-        "layout_sizing" => RustyServer::new(port, || LayoutSizingApp),
-        "container" => RustyServer::new(port, || ContainerApp),
-        "icon" => RustyServer::new(port, || IconApp),
-        "image" => RustyServer::new(port, || ImageApp),
-        "avatar" => RustyServer::new(port, || AvatarApp),
-        "callout" => RustyServer::new(port, || CalloutApp),
-        "skeleton" => RustyServer::new(port, || SkeletonApp),
-        "expandable" => RustyServer::new(port, || ExpandableApp),
-        "list" => RustyServer::new(port, || ListApp),
-        "text_area" => RustyServer::new(port, || TextAreaApp),
-        "slider" => RustyServer::new(port, || SliderApp),
-        "date_input" => RustyServer::new(port, || DateInputApp),
-        "color_input" => RustyServer::new(port, || ColorInputApp),
-        "radio_group" => RustyServer::new(port, || RadioGroupApp),
-        "multi_select" => RustyServer::new(port, || MultiSelectApp),
-        "badge" => RustyServer::new(port, || BadgeApp),
-        "progress" => RustyServer::new(port, || ProgressApp),
-        "table" => RustyServer::new(port, || TableApp),
-        "dialog" => RustyServer::new(port, || DialogApp),
-        "tooltip" => RustyServer::new(port, || TooltipApp),
-        other => {
-            eprintln!("Unknown widget: {}", other);
-            eprintln!(
-                "Known widgets: button, text, text_input, number_input, select, checkbox, \
-                 layout, card, query, downloads, data_table, form, diff_view, qr_code, \
-                 activity_heatmap, terminal, rich_text_input, spacer, separator, \
-                 layout_sizing, container, icon, image, avatar, callout, skeleton, \
-                 expandable, list, text_area, slider, date_input, color_input, \
-                 radio_group, multi_select, badge, progress, table, dialog, tooltip"
-            );
-            std::process::exit(1);
-        }
-    };
+let server = RustyServer::new(cli.port, move || HarnessApp(widget));
 
     let server = if let Some(dir) = static_dir {
         server.with_static_dir(dir)
@@ -1128,4 +1212,66 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     server.with_bind_address(cli.host).serve().await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusty::core::query_cache::QueryService;
+    use rusty::core::services::{AppContext, ServiceRegistry};
+    use rusty::hooks::hook_store::HookStore;
+    use rusty::shared::ViewId;
+    use std::sync::Arc;
+
+    /// The harness apps are served by `AppSessionStore::create_session`, which
+    /// registers these services. `use_query` panics without them.
+    fn harness_services() -> Arc<ServiceRegistry> {
+        let services = Arc::new(ServiceRegistry::new());
+        services.register(Arc::new(AppContext::new("test-connection")));
+        services.register(Arc::new(QueryService::new()));
+        services
+    }
+
+    #[tokio::test]
+    async fn all_widget_kinds_build_a_tree() {
+        for kind in WidgetKind::value_variants() {
+            let mut store = HookStore::new();
+            let mut ctx =
+                BuildContext::with_services(&mut store, None, ViewId::nil(), harness_services());
+
+            let element = kind.build_app(&mut ctx);
+
+            assert!(
+                matches!(element, Element::Widget(_)),
+                "{:?} built {:?} instead of a widget",
+                kind,
+                element
+            );
+        }
+    }
+
+    #[test]
+    fn widget_kind_names_are_snake_case() {
+        let names: Vec<String> = WidgetKind::value_variants()
+            .iter()
+            .map(|kind| {
+                kind.to_possible_value()
+                    .expect("every variant is selectable")
+                    .get_name()
+                    .to_string()
+            })
+            .collect();
+
+        // e2e/tests/harness.ts passes these names through as the first argv, so
+        // renaming one silently breaks the Playwright suite.
+        assert!(names.contains(&"text_input".to_string()), "{:?}", names);
+        assert!(names.contains(&"number_input".to_string()), "{:?}", names);
+        assert!(
+            names
+                .iter()
+                .all(|n| n.chars().all(|c| c.is_ascii_lowercase() || c == '_')),
+            "{:?}",
+            names
+        );
+    }
 }
