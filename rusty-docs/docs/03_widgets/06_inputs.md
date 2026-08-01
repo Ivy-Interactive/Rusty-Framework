@@ -69,3 +69,24 @@ Checkbox::new(agreed.get())
     })
     .into()
 ```
+
+### Read-only text
+
+`TextInput` can be shown but not edited. Unlike `.disabled(true)`, a read-only
+field stays focusable and keeps its normal styling, so it suits displaying a
+generated value the user may want to copy.
+
+```rust
+TextInput::new()
+    .label("API key")
+    .value(&api_key)
+    .read_only(true)
+    .into()
+```
+
+### Specialized inputs
+
+Six further inputs each have their own page: [TextArea](28_text_area.md),
+[Slider](29_slider.md), [DateInput](30_date_input.md),
+[ColorInput](31_color_input.md), [RadioGroup](32_radio_group.md) and
+[MultiSelect](33_multi_select.md).

@@ -18,6 +18,13 @@ Layout::grid(columns) // Grid with N columns
 | Padding | `.padding(n)` | `f64` | Inner padding |
 | Align | `.align(a)` | `Align` | Cross-axis alignment |
 | Justify | `.justify(j)` | `Justify` | Main-axis justification |
+| Width | `.width(s)` | `Size` | Explicit width |
+| Height | `.height(s)` | `Size` | Explicit height |
+| Wrap | `.wrap(w)` | `bool` | Let children flow onto further lines |
+
+Width and height are `Size` values, so `Size::Px(320.0)`, `Size::Percent(50.0)`
+and `Size::Auto` all render as the CSS length you would expect. Leave them
+unset to size to content.
 
 ### Children
 
