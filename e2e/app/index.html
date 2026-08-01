@@ -239,6 +239,12 @@
           el.setAttribute('data-direction', node.direction || 'vertical');
           if (node.gap) el.style.gap = node.gap + 'px';
           if (node.padding) el.style.padding = node.padding + 'px';
+          if (node.width) el.style.width = node.width;
+          if (node.height) el.style.height = node.height;
+          if (node.wrap) {
+            el.style.flexWrap = 'wrap';
+            el.setAttribute('data-wrap', 'true');
+          }
           if (node.direction === 'grid' && node.columns) {
             el.style.gridTemplateColumns = `repeat(${node.columns}, 1fr)`;
           }

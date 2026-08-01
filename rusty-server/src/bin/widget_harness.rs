@@ -304,6 +304,36 @@ impl View for SeparatorApp {
     }
 }
 
+/// Exercises `Layout`'s new `width`/`height`/`wrap` builders. Kept separate
+/// from `LayoutApp` so its specs can keep counting a single horizontal row.
+struct LayoutSizingApp;
+
+impl View for LayoutSizingApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        Layout::vertical()
+            .gap(8.0)
+            .child(TextBlock::h1("Layout Sizing Test"))
+            .child(
+                Layout::horizontal()
+                    .width(Size::Px(320.0))
+                    .height(Size::Px(48.0))
+                    .child(TextBlock::paragraph("Fixed")),
+            )
+            .child(
+                Layout::horizontal()
+                    .width(Size::Percent(50.0))
+                    .child(TextBlock::paragraph("Half width")),
+            )
+            .child(
+                Layout::horizontal()
+                    .wrap(true)
+                    .gap(4.0)
+                    .child(TextBlock::paragraph("Wrapping")),
+            )
+            .into()
+    }
+}
+
 struct ContainerApp;
 
 impl View for ContainerApp {
@@ -844,7 +874,7 @@ impl View for RichTextInputApp {
             .child(
                 RichTextInput::new()
                     .value(&html_display)
-                    .placeholder("Write somethingâ€¦")
+                    .placeholder("Write something…")
                     .on_change(move |v: String| {
                         html_clone.set(v);
                     })
@@ -884,6 +914,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "rich_text_input" => RustyServer::new(port, || RichTextInputApp),
         "spacer" => RustyServer::new(port, || SpacerApp),
         "separator" => RustyServer::new(port, || SeparatorApp),
+        "layout_sizing" => RustyServer::new(port, || LayoutSizingApp),
         "container" => RustyServer::new(port, || ContainerApp),
         "icon" => RustyServer::new(port, || IconApp),
         "image" => RustyServer::new(port, || ImageApp),
@@ -902,9 +933,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("Unknown widget: {}", other);
             eprintln!(
                 "Known widgets: button, text, text_input, number_input, select, checkbox, \
-                 layout, card, query, spacer, separator, container, icon, image, avatar, \
-                 callout, skeleton, expandable, list, text_area, slider, date_input, \
-                 color_input, radio_group, multi_select"
+                 layout, card, query, data_table, form, diff_view, qr_code, \
+                 activity_heatmap, terminal, rich_text_input, spacer, separator, \
+                 layout_sizing, container, icon, image, avatar, callout, skeleton, \
+                 expandable, list, text_area, slider, date_input, color_input, \
+                 radio_group, multi_select"
             );
             std::process::exit(1);
         }
