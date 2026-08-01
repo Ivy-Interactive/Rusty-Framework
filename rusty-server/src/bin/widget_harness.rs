@@ -1116,6 +1116,26 @@ impl View for TooltipApp {
     }
 }
 
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt::init();
+    let cli = Cli::parse();
+
+    // clap rejects unknown widget names before we get here, so there is no
+    // unknown-widget arm to write.
+    let widget = cli.widget;
+    let static_dir = cli.static_dir;
+    let server = RustyServer::new(cli.port, move || HarnessApp(widget));
+
+    let server = if let Some(dir) = static_dir {
+        server.with_static_dir(dir)
+    } else {
+        server
+    };
+
+    server.with_bind_address(cli.host).serve().await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1176,24 +1196,4 @@ mod tests {
             names
         );
     }
-}
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
-    let cli = Cli::parse();
-
-    // clap rejects unknown widget names before we get here, so there is no
-    // unknown-widget arm to write.
-    let widget = cli.widget;
-    let static_dir = cli.static_dir;
-    let server = RustyServer::new(cli.port, move || HarnessApp(widget));
-
-    let server = if let Some(dir) = static_dir {
-        server.with_static_dir(dir)
-    } else {
-        server
-    };
-
-    server.with_bind_address(cli.host).serve().await
 }
