@@ -96,7 +96,8 @@ mod tests {
         bytes: Vec<u8>,
     ) -> (State<Option<String>>, Vec<EffectCleanup>) {
         let (state, effects) = {
-            let mut ctx = BuildContext::with_services(store, None, uuid::Uuid::nil(), Arc::clone(services));
+            let mut ctx =
+                BuildContext::with_services(store, None, uuid::Uuid::nil(), Arc::clone(services));
             let state = use_download_bytes(&mut ctx, bytes, "text/csv", "export.csv");
             (state, ctx.drain_effects())
         };
@@ -169,8 +170,12 @@ mod tests {
         let (state, _cleanups) = {
             let calls = calls.clone();
             let (state, effects) = {
-                let mut ctx =
-                    BuildContext::with_services(&mut store, None, uuid::Uuid::nil(), Arc::clone(&services));
+                let mut ctx = BuildContext::with_services(
+                    &mut store,
+                    None,
+                    uuid::Uuid::nil(),
+                    Arc::clone(&services),
+                );
                 let state = use_download(
                     &mut ctx,
                     move || {

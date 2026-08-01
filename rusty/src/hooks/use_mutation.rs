@@ -91,8 +91,12 @@ mod tests {
         // A reader view subscribes to the key.
         let mut reader_store = HookStore::new();
         {
-            let mut ctx =
-                BuildContext::with_services(&mut reader_store, None, uuid::Uuid::nil(), Arc::clone(&services));
+            let mut ctx = BuildContext::with_services(
+                &mut reader_store,
+                None,
+                uuid::Uuid::nil(),
+                Arc::clone(&services),
+            );
             let _: QueryResult<String> = use_query(
                 &mut ctx,
                 Some("todos"),
@@ -105,16 +109,24 @@ mod tests {
         // A writer view mutates it without subscribing.
         let mut writer_store = HookStore::new();
         let mutator: QueryMutator<String> = {
-            let ctx =
-                BuildContext::with_services(&mut writer_store, None, uuid::Uuid::nil(), Arc::clone(&services));
+            let ctx = BuildContext::with_services(
+                &mut writer_store,
+                None,
+                uuid::Uuid::nil(),
+                Arc::clone(&services),
+            );
             use_mutation(&ctx, "todos", options.clone())
         };
         mutator.mutate(Some("written".to_string()), false);
 
         // The reader sees the new value on its next build.
         let reader_result: QueryResult<String> = {
-            let mut ctx =
-                BuildContext::with_services(&mut reader_store, None, uuid::Uuid::nil(), Arc::clone(&services));
+            let mut ctx = BuildContext::with_services(
+                &mut reader_store,
+                None,
+                uuid::Uuid::nil(),
+                Arc::clone(&services),
+            );
             use_query(
                 &mut ctx,
                 Some("todos"),
@@ -138,8 +150,12 @@ mod tests {
 
         let mut reader_store = HookStore::new();
         {
-            let mut ctx =
-                BuildContext::with_services(&mut reader_store, None, uuid::Uuid::nil(), Arc::clone(&services));
+            let mut ctx = BuildContext::with_services(
+                &mut reader_store,
+                None,
+                uuid::Uuid::nil(),
+                Arc::clone(&services),
+            );
             let _: QueryResult<String> = use_query(
                 &mut ctx,
                 Some("cart"),
@@ -151,8 +167,12 @@ mod tests {
 
         let mut writer_store = HookStore::new();
         let mutator: QueryMutator<String> = {
-            let ctx =
-                BuildContext::with_services(&mut writer_store, None, uuid::Uuid::nil(), Arc::clone(&services));
+            let ctx = BuildContext::with_services(
+                &mut writer_store,
+                None,
+                uuid::Uuid::nil(),
+                Arc::clone(&services),
+            );
             use_mutation(&ctx, "cart", options)
         };
         mutator.invalidate();
