@@ -70,6 +70,107 @@ mod tests {
     }
 
     #[test]
+    fn test_service_resolves_in_nested_child_view() {
+        use std::sync::Mutex;
+        static SAW: Mutex<Option<String>> = Mutex::new(None);
+
+        struct GrandchildView;
+        impl View for GrandchildView {
+            fn build(&self, ctx: &mut BuildContext) -> Element {
+                let greeter = use_service::<Greeter>(ctx);
+                *SAW.lock().unwrap() = Some(greeter.greeting.clone());
+                Element::Widget(Box::new(TextBlock::new(&greeter.greeting)))
+            }
+        }
+
+        struct ChildView;
+        impl View for ChildView {
+            fn build(&self, ctx: &mut BuildContext) -> Element {
+                let (element, _id) = ctx.child_view(GrandchildView);
+                element
+            }
+        }
+
+        let services = Arc::new(ServiceRegistry::new());
+        services.register(Arc::new(Greeter {
+            greeting: "two levels down".to_string(),
+        }));
+
+        let mut store = HookStore::new();
+        let mut ctx = BuildContext::with_services(&mut store, None, uuid::Uuid::new_v4(), services);
+        let (_element, _child_id) = ctx.child_view(ChildView);
+
+        assert_eq!(SAW.lock().unwrap().take().unwrap(), "two levels down");
+    }
+
+    #[test]
+    fn test_use_service_between_use_state_calls_does_not_desync_hooks() {
+        use crate::hooks::use_state::use_state;
+
+        struct Counter {
+            start: i32,
+        }
+
+        struct MixedView;
+        impl View for MixedView {
+            fn build(&self, ctx: &mut BuildContext) -> Element {
+                let first = use_state(ctx, 1i32);
+                // A service lookup sandwiched between two state hooks must not
+                // consume an index, or `second` would read `first`'s slot.
+                let counter = use_service::<Counter>(ctx);
+                let second = use_state(ctx, 2i32);
+                Element::Widget(Box::new(TextBlock::new(&format!(
+                    "{}-{}-{}",
+                    first.get(),
+                    second.get(),
+                    counter.start
+                ))))
+            }
+        }
+
+        let services = Arc::new(ServiceRegistry::new());
+        services.register(Arc::new(Counter { start: 7 }));
+
+        let mut store = HookStore::new();
+        let view_id = uuid::Uuid::new_v4();
+
+        {
+            let mut ctx = BuildContext::with_services(&mut store, None, view_id, services.clone());
+            let element = MixedView.build(&mut ctx);
+            let json = serde_json::to_value(&element).unwrap().to_string();
+            assert!(json.contains("1-2-7"), "First build produced: {}", json);
+        }
+
+        assert_eq!(
+            store.states.len(),
+            2,
+            "Expected two independent state slots"
+        );
+
+        {
+            let mut ctx = BuildContext::with_services(&mut store, None, view_id, services.clone());
+            let element = MixedView.build(&mut ctx);
+            let json = serde_json::to_value(&element).unwrap().to_string();
+            assert!(json.contains("1-2-7"), "Second build produced: {}", json);
+        }
+    }
+
+    #[test]
+    fn test_repeated_use_service_calls_return_same_instance() {
+        let services = Arc::new(ServiceRegistry::new());
+        services.register(Arc::new(Greeter {
+            greeting: "shared".to_string(),
+        }));
+
+        let mut store = HookStore::new();
+        let ctx = BuildContext::with_services(&mut store, None, uuid::Uuid::new_v4(), services);
+
+        let a = use_service::<Greeter>(&ctx);
+        let b = use_service::<Greeter>(&ctx);
+        assert!(Arc::ptr_eq(&a, &b));
+    }
+
+    #[test]
     fn test_child_context_inherits_registry() {
         use std::sync::Mutex;
 
