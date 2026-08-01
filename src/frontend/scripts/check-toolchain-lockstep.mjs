@@ -2,6 +2,7 @@
 // toolchain must all move together, and `vitest` must match the version `vite-plus` pins exactly.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 
 const ALIAS = "npm:@voidzero-dev/vite-plus-core@";
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -71,6 +72,35 @@ if (vitePlusVersion && vitestVersion) {
   }
 }
 
+// Check installed tree against declared versions
+const installedChecks = [
+  { packageName: "vite-plus", expectedVersion: vitePlusVersion },
+  { packageName: "vite", realName: "@voidzero-dev/vite-plus-core", expectedVersion: vitePlusVersion },
+  { packageName: "vitest", expectedVersion: vitestVersion },
+];
+
+const installed = {};
+let anyMissing = false;
+
+for (const { packageName, realName, expectedVersion } of installedChecks) {
+  const resolveName = realName ?? packageName;
+  try {
+    const require = createRequire(new URL("../package.json", import.meta.url));
+    const pkgPath = require.resolve(`${resolveName}/package.json`);
+    const pkgData = JSON.parse(readFileSync(pkgPath, "utf8"));
+    installed[packageName] = pkgData.version;
+
+    if (pkgData.version !== expectedVersion) {
+      errors.push(
+        `${packageName}: package.json declares ${expectedVersion} but node_modules has ${pkgData.version} — ` +
+          `check pnpm.overrides for an entry on this package, then re-run pnpm install.`,
+      );
+    }
+  } catch {
+    anyMissing = true;
+  }
+}
+
 if (errors.length > 0) {
   console.error(
     `The Vite+ toolchain is out of lockstep. All five entries must move together in one ` +
@@ -79,4 +109,10 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
-console.log(`Vite+ toolchain in lockstep: vite-plus ${vitePlusVersion}, vitest ${vitestVersion}.`);
+const installedSummary = anyMissing
+  ? "(installed tree not checked — node_modules absent)"
+  : `(installed tree matches: vite-plus ${installed["vite-plus"]}, vite ${installed["vite"]}, vitest ${installed["vitest"]})`;
+
+console.log(
+  `Vite+ toolchain in lockstep: vite-plus ${vitePlusVersion}, vitest ${vitestVersion}. ${installedSummary}`,
+);
