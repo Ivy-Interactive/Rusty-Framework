@@ -216,6 +216,14 @@ without a build, though only for the barrel it names.
 have no importer at all, so they cannot defeat anything no matter what they re-export. There is no
 need to pre-emptively narrow them.
 
+A barrel whose only runtime export is the lazy widget itself (plus `export type` declarations) is
+harmless while nothing imports it, but rewriting the `import()` to name the concrete module alone
+does not protect it - the barrel's own `export { Widget }` re-export becomes the static edge once
+an eager importer appears. Both halves must be applied: narrow the barrel and point the dynamic
+import at the concrete module. Four barrels (`calendar/`, `kanban/`, `tree/`, `layouts/sidebar/`)
+currently re-export a lazy widget but have zero production importers and remain intentionally
+untouched.
+
 ## Testing
 
 This project uses Vitest (via Vite+) for unit testing and Playwright for end-to-end testing.
