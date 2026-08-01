@@ -409,7 +409,6 @@ impl View for TooltipApp {
     }
 }
 
-
 /// Exercises `use_query`. The fetcher sleeps, so the loading-to-loaded
 /// transition arrives over the WebSocket push path rather than in the first
 /// render.
