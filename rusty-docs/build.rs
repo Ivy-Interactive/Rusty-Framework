@@ -84,11 +84,19 @@ fn main() {
         let section_dir = out_dir.join(&section.module_name);
         fs::create_dir_all(&section_dir).expect("failed to create section dir");
 
-        let mut section_mod = String::new();
+        let mut page_modules = Vec::new();
         for page in &section.pages {
             generate_page_module(&section_dir, section, page);
-            section_mod.push_str(&format!("pub mod {};\n", page.module_name));
+            page_modules.push(page.module_name.clone());
         }
+
+        // rustfmt sorts `pub mod` declarations alphabetically, so emit them that way.
+        // Page *ordering* for the sidebar comes from the registry in mod.rs, not from here.
+        page_modules.sort();
+        let section_mod: String = page_modules
+            .iter()
+            .map(|m| format!("pub mod {};\n", m))
+            .collect();
 
         fs::write(section_dir.join("mod.rs"), section_mod).expect("failed to write section mod.rs");
     }
@@ -96,8 +104,14 @@ fn main() {
     // Generate top-level mod.rs with page registry
     let mut mod_rs = String::new();
 
-    for section in sections.values() {
-        mod_rs.push_str(&format!("pub mod {};\n", section.module_name));
+    // Alphabetical, to match how rustfmt sorts `pub mod` declarations.
+    let mut section_modules: Vec<&str> = sections
+        .values()
+        .map(|s| s.module_name.as_str())
+        .collect::<Vec<_>>();
+    section_modules.sort_unstable();
+    for module_name in &section_modules {
+        mod_rs.push_str(&format!("pub mod {};\n", module_name));
     }
 
     mod_rs.push_str("\nuse rusty::prelude::*;\n\n");
@@ -115,15 +129,21 @@ fn main() {
     for section in sections.values() {
         for page in &section.pages {
             let struct_name = to_pascal_case(&page.module_name);
+            // One field per line with a trailing comma — the shape rustfmt produces
+            // for a struct literal this wide.
             mod_rs.push_str(&format!(
-                "        DocPage {{ section: \"{}\", title: \"{}\", id: \"{}_{}\", view_factory: || Box::new({}::{}::{}Page) }},\n",
-                section.display_name,
-                page.display_name,
-                section.module_name,
-                page.module_name,
-                section.module_name,
-                page.module_name,
-                struct_name,
+                r#"        DocPage {{
+            section: "{section}",
+            title: "{title}",
+            id: "{section_module}_{page_module}",
+            view_factory: || Box::new({section_module}::{page_module}::{struct_name}Page),
+        }},
+"#,
+                section = section.display_name,
+                title = page.display_name,
+                section_module = section.module_name,
+                page_module = page.module_name,
+                struct_name = struct_name,
             ));
         }
     }
@@ -161,7 +181,9 @@ impl View for {struct_name}Page {{
             .padding(24.0)
             .gap(16.0)
             .child(TextBlock::h1("{title}"))
-            .child(TextBlock::markdown(include_str!("{md_path}")))
+            .child(TextBlock::markdown(include_str!(
+                "{md_path}"
+            )))
             .into()
     }}
 }}
