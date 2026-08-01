@@ -380,8 +380,8 @@ mod tests {
 
     async fn serve_download(
         service: &Arc<DownloadService>,
-        factory: super::download::DownloadFactory,
-    ) -> (SocketAddr, String, super::download::DownloadHandle) {
+        factory: crate::server::download::DownloadFactory,
+    ) -> (SocketAddr, String, crate::server::download::DownloadHandle) {
         let (handle, url) = service.add_download(factory, "text/plain", "test.txt");
         let addr = RustyServer::new(0, || Probe)
             .serve_background()
@@ -392,8 +392,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_buffered_download_still_sends_content_length() {
+        use crate::server::download;
+
         let service = Arc::new(DownloadService::new("conn-http"));
-        let factory = super::download::download_factory(|| async { Ok(b"buffer".to_vec()) });
+        let factory = download::download_factory(|| async { Ok(b"buffer".to_vec()) });
         let (addr, url, _handle) = serve_download(&service, factory).await;
 
         let (headers, body) = http_get(addr, &url).await;
@@ -424,8 +426,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_download_is_served_chunked_over_http() {
+        use crate::server::download;
+
         let service = Arc::new(DownloadService::new("conn-http"));
-        let factory = super::download::stream_download_factory(|| async {
+        let factory = download::stream_download_factory(|| async {
             Ok(futures::stream::iter(vec![
                 Ok(bytes::Bytes::from("chunk-a")),
                 Ok(bytes::Bytes::from("chunk-b")),
@@ -473,9 +477,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_stream_that_fails_to_open_is_a_404() {
+        use crate::server::download;
+
         let service = Arc::new(DownloadService::new("conn-http"));
-        let factory = super::download::stream_download_factory(|| async {
-            Err(crate::core::query_cache::QueryError::new("open failed"))
+        let factory = download::stream_download_factory(|| async {
+            Err::<futures::stream::Empty<Result<bytes::Bytes, crate::core::query_cache::QueryError>>, _>(
+                crate::core::query_cache::QueryError::new("open failed")
+            )
         });
         let (handle, url) = service.add_stream_download(factory, "text/plain", "bad.txt");
         let addr = RustyServer::new(0, || Probe)

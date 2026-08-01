@@ -431,7 +431,11 @@ mod tests {
 
         // A factory that fails to open yields None.
         let (handle, _url) = service.add_stream_download(
-            stream_download_factory(|| async { Err(QueryError::new("open failed")) }),
+            stream_download_factory(|| async {
+                Err::<futures::stream::Empty<Result<Bytes, QueryError>>, _>(QueryError::new(
+                    "open failed",
+                ))
+            }),
             "text/plain",
             "bad.txt",
         );
