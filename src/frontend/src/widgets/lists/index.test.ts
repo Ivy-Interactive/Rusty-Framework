@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { it, expect } from "vitest";
 
 const barrel = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
 
