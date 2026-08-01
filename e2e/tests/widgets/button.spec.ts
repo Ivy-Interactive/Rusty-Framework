@@ -26,8 +26,10 @@ test('button displays correct labels', async ({ page }) => {
 
 test('button has variant attribute', async ({ page }) => {
   await navigateToHarness(page, harness.port);
-  await expect(page.locator('button[data-variant="primary"]')).toBeVisible();
-  await expect(page.locator('button[data-variant="secondary"]')).toBeVisible();
+  await expect(page.locator('button[data-variant="primary"]')).toHaveText('Click me');
+  await expect(page.locator('button[data-variant="secondary"]')).toHaveText('Secondary');
+  // The widget sends no variant for "Disabled", so the renderer must not invent one.
+  await expect(page.locator('button:has-text("Disabled")')).not.toHaveAttribute('data-variant');
 });
 
 test('disabled button is not clickable', async ({ page }) => {
