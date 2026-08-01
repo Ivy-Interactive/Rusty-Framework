@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use rusty::prelude::*;
 use rusty::widgets::badge::BadgeVariant;
 use rusty::widgets::button::ButtonVariant;
@@ -7,13 +7,33 @@ use rusty::widgets::table::Column;
 use serde_json::json;
 use std::path::PathBuf;
 
+/// One variant per widget the harness can serve. The snake_case names are the
+/// contract with `e2e/tests/harness.ts`, which passes them straight through as
+/// the first argv.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+#[value(rename_all = "snake_case")]
+enum WidgetKind {
+    Button,
+    Text,
+    TextInput,
+    NumberInput,
+    Select,
+    Checkbox,
+    Layout,
+    Card,
+    Badge,
+    Progress,
+    Table,
+    Dialog,
+    Tooltip,
+}
+
 #[derive(Parser)]
 #[command(name = "widget_harness")]
 #[command(about = "Launch a minimal Rusty app exercising a single widget for E2E testing")]
 struct Cli {
-    /// Widget to test (button, text, text_input, number_input, select, checkbox,
-    /// layout, card, badge, progress, table, dialog, tooltip)
-    widget: String,
+    /// Widget to test
+    widget: WidgetKind,
 
     /// Port to listen on (0 for auto-assign)
     #[arg(short, long, default_value = "0")]
@@ -22,6 +42,37 @@ struct Cli {
     /// Directory to serve static files from
     #[arg(short, long)]
     static_dir: Option<PathBuf>,
+}
+
+impl WidgetKind {
+    /// The single dispatch point from a kind to its sample app. Because the match
+    /// is exhaustive, a variant added without an arm fails to compile.
+    fn build_app(self, ctx: &mut BuildContext) -> Element {
+        match self {
+            WidgetKind::Button => ButtonApp.build(ctx),
+            WidgetKind::Text => TextApp.build(ctx),
+            WidgetKind::TextInput => TextInputApp.build(ctx),
+            WidgetKind::NumberInput => NumberInputApp.build(ctx),
+            WidgetKind::Select => SelectApp.build(ctx),
+            WidgetKind::Checkbox => CheckboxApp.build(ctx),
+            WidgetKind::Layout => LayoutApp.build(ctx),
+            WidgetKind::Card => CardApp.build(ctx),
+            WidgetKind::Badge => BadgeApp.build(ctx),
+            WidgetKind::Progress => ProgressApp.build(ctx),
+            WidgetKind::Table => TableApp.build(ctx),
+            WidgetKind::Dialog => DialogApp.build(ctx),
+            WidgetKind::Tooltip => TooltipApp.build(ctx),
+        }
+    }
+}
+
+/// The root view the server serves: whichever sample app the kind selects.
+struct HarnessApp(WidgetKind);
+
+impl View for HarnessApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        self.0.build_app(ctx)
+    }
 }
 
 struct ButtonApp;
@@ -362,35 +413,64 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     let cli = Cli::parse();
 
-    let widget = cli.widget.as_str();
-    let port = cli.port;
-    let static_dir = cli.static_dir;
+    // clap rejects unknown widget names before we get here, so there is no
+    // unknown-widget arm to write.
+    let widget = cli.widget;
+    let server = RustyServer::new(cli.port, move || HarnessApp(widget));
 
-    let server = match widget {
-        "button" => RustyServer::new(port, || ButtonApp),
-        "text" => RustyServer::new(port, || TextApp),
-        "text_input" => RustyServer::new(port, || TextInputApp),
-        "number_input" => RustyServer::new(port, || NumberInputApp),
-        "select" => RustyServer::new(port, || SelectApp),
-        "checkbox" => RustyServer::new(port, || CheckboxApp),
-        "layout" => RustyServer::new(port, || LayoutApp),
-        "card" => RustyServer::new(port, || CardApp),
-        "badge" => RustyServer::new(port, || BadgeApp),
-        "progress" => RustyServer::new(port, || ProgressApp),
-        "table" => RustyServer::new(port, || TableApp),
-        "dialog" => RustyServer::new(port, || DialogApp),
-        "tooltip" => RustyServer::new(port, || TooltipApp),
-        other => {
-            eprintln!("Unknown widget: {}", other);
-            std::process::exit(1);
-        }
-    };
-
-    let server = if let Some(dir) = static_dir {
+    let server = if let Some(dir) = cli.static_dir {
         server.with_static_dir(dir)
     } else {
         server
     };
 
     server.serve().await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusty::hooks::hook_store::HookStore;
+
+    #[test]
+    fn all_widget_kinds_build_a_tree() {
+        for kind in WidgetKind::value_variants() {
+            let mut store = HookStore::new();
+            let mut ctx = BuildContext::new(&mut store, None);
+
+            let element = kind.build_app(&mut ctx);
+
+            assert!(
+                matches!(element, Element::Widget(_)),
+                "{:?} built {:?} instead of a widget",
+                kind,
+                element
+            );
+        }
+    }
+
+    #[test]
+    fn widget_kind_names_are_snake_case() {
+        let names: Vec<String> = WidgetKind::value_variants()
+            .iter()
+            .map(|kind| {
+                kind.to_possible_value()
+                    .expect("every variant is selectable")
+                    .get_name()
+                    .to_string()
+            })
+            .collect();
+
+        // e2e/tests/harness.ts passes these names through as the first argv, so
+        // renaming one silently breaks the Playwright suite.
+        assert!(names.contains(&"text_input".to_string()), "{:?}", names);
+        assert!(names.contains(&"number_input".to_string()), "{:?}", names);
+        assert!(
+            names
+                .iter()
+                .all(|n| n.chars().all(|c| c.is_ascii_lowercase() || c == '_')),
+            "{:?}",
+            names
+        );
+    }
 }

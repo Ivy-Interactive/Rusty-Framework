@@ -1,4 +1,19 @@
+use clap::Parser;
 use rusty::prelude::*;
+use std::path::PathBuf;
+
+#[derive(Parser)]
+#[command(name = "rusty-server")]
+#[command(about = "Serve a Rusty-Framework application")]
+struct Cli {
+    /// Port to listen on
+    #[arg(short, long, env = "PORT", default_value = "3000")]
+    port: u16,
+
+    /// Directory to serve static files from
+    #[arg(short, long)]
+    static_dir: Option<PathBuf>,
+}
 
 struct HelloWorld;
 
@@ -17,12 +32,16 @@ impl View for HelloWorld {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
+    let cli = Cli::parse();
 
-    let port = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(3000);
+    tracing::info!("Starting Rusty-Framework server on port {}", cli.port);
+    let server = RustyServer::new(cli.port, || HelloWorld);
 
-    tracing::info!("Starting Rusty-Framework server on port {}", port);
-    RustyServer::new(port, || HelloWorld).serve().await
+    let server = if let Some(dir) = cli.static_dir {
+        server.with_static_dir(dir)
+    } else {
+        server
+    };
+
+    server.serve().await
 }
