@@ -88,8 +88,7 @@ The frontend project uses **Vite+** integrated tools (**Oxlint** and **Oxfmt**) 
 
 ### Pre-commit Hooks
 
-We use a Husky npm package to set up the repo's pre-commit hook. It does two things: it rejects staged
-files containing merge conflict markers, and it lints and formats staged frontend files.
+We use a Husky npm package to set up the repo's pre-commit hook. It lints and formats staged frontend files and runs rustfmt on staged .rs files.
 
 The active hook is `.husky/pre-commit` (`core.hooksPath` points at `.husky/_`), and its frontend step
 reads per-glob commands from the `lint-staged` key in `package.json`. Two other files look like they
@@ -97,10 +96,7 @@ configure it but do not: `.vite-hooks/pre-commit` and the `staged` block in `vit
 to Vite+'s own hook runner, which this repo does not select. Edit `.husky/pre-commit` and
 `package.json`, not those.
 
-The hook does **not** format staged Rust files: `lint-staged` globs resolve against `src/frontend`, so
-they cannot reach the crates two levels up, and a `rustfmt` step in the hook body has not landed (see
-plan 00042 and plan 00061). Until it does, run `cargo fmt --all` yourself before committing Rust — CI
-runs `cargo fmt --all -- --check` and will reject unformatted code.
+For Rust files, the hook runs `rustfmt --edition 2021 --config skip_children=true` on staged `.rs` files. Fully staged files are auto-formatted and re-added; partially staged files (where the worktree has unstaged edits) are checked only and will block the commit if unformatted. If `rustfmt` is not on `PATH`, the Rust block is skipped.
 
 To get the auto-linting for staged files, you need to have run `vp install` in `./frontend` at least once. Ideally, you would not then need to run any formatting or lint commands as it will be done for you. In case you want to manually run them, you still can.
 

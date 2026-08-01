@@ -114,7 +114,7 @@
         case 'button': {
           const btn = document.createElement('button');
           btn.textContent = node.title || '';
-          btn.setAttribute('data-variant', node.variant || 'primary');
+          if (node.variant) btn.setAttribute('data-variant', node.variant);
           if (node.disabled) btn.disabled = true;
           if (node.loading) btn.setAttribute('data-loading', 'true');
           if (node.hasOnClick && node.id) {

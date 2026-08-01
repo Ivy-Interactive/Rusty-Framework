@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 use uuid::Uuid;
 
 use crate::core::runtime::RuntimeMessage;
@@ -36,6 +35,9 @@ pub enum ClientMessage {
     Navigate {
         #[serde(rename = "appId")]
         app_id: String,
+        /// Optional navigation state. A bare `{"method":"navigate","appId":"x"}`
+        /// must still deserialize instead of being silently dropped.
+        #[serde(default)]
         state: serde_json::Value,
     },
 }
@@ -238,11 +240,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     }
     let event_tx = session_arc.read().await.runtime.event_sender();
 
-    // Poll for rebuilds triggered outside the request path (async hooks resolving,
-    // spawned tasks calling State::set). The rebuild channel lives inside the
-    // Runtime, so a notification-based push would mean exposing it; 50 ms is
-    // imperceptible to a user.
-    let mut push_ticker = tokio::time::interval(Duration::from_millis(50));
+    // Woken when a rebuild is queued outside the request path (async hooks
+    // resolving, spawned tasks calling State::set). No polling: the task parks
+    // until a producer actually signals.
+    let rebuild_notify = session_arc.read().await.runtime.rebuild_notifier();
 
     // Process incoming messages using this session's isolated runtime
     loop {
@@ -250,8 +251,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             msg = receiver.next() => {
                 match msg {
                     Some(Ok(Message::Text(text))) => {
-                        if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
-                            match client_msg {
+                        match serde_json::from_str::<ClientMessage>(&text) {
+                            Err(err) => {
+                                tracing::warn!("Ignoring unparseable client message: {err}");
+                            }
+                            Ok(client_msg) => match client_msg {
                                 ClientMessage::Event {
                                     widget_id,
                                     event_name,
@@ -283,14 +287,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 ClientMessage::Navigate { .. } => {
                                     // Navigation handling (future)
                                 }
-                            }
+                            },
                         }
                     }
                     Some(Ok(_)) => {} // Ignore non-text messages
                     _ => break, // Connection closed or error
                 }
             }
-            _ = push_ticker.tick() => {
+            _ = rebuild_notify.notified() => {
                 let mut session = session_arc.write().await;
                 if session.runtime.process_pending().await {
                     if let Some(tree) = session.runtime.current_tree().await {
@@ -348,5 +352,44 @@ mod tests {
             .await
             .expect("bind");
         assert_eq!(addr.ip(), std::net::Ipv4Addr::UNSPECIFIED);
+    }
+
+    #[test]
+    fn navigate_deserializes_without_state() {
+        let msg: ClientMessage =
+            serde_json::from_str(r#"{"method":"navigate","appId":"reports"}"#).unwrap();
+        match msg {
+            ClientMessage::Navigate { app_id, state } => {
+                assert_eq!(app_id, "reports");
+                assert_eq!(state, serde_json::Value::Null);
+            }
+            other => panic!("expected Navigate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn navigate_still_deserializes_with_state() {
+        let msg: ClientMessage =
+            serde_json::from_str(r#"{"method":"navigate","appId":"reports","state":{"page":2}}"#)
+                .unwrap();
+        match msg {
+            ClientMessage::Navigate { app_id, state } => {
+                assert_eq!(app_id, "reports");
+                assert_eq!(state["page"], 2);
+            }
+            other => panic!("expected Navigate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn event_still_requires_all_fields() {
+        assert!(serde_json::from_str::<ClientMessage>(
+            r#"{"method":"event","widgetId":"btn-1","eventName":"click","args":[]}"#
+        )
+        .is_ok());
+        assert!(serde_json::from_str::<ClientMessage>(
+            r#"{"method":"event","widgetId":"btn-1","eventName":"click"}"#
+        )
+        .is_err());
     }
 }

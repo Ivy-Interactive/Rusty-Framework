@@ -87,6 +87,25 @@ const injectMeta = (mode) => {
 
 const mode = process.env.NODE_ENV || "development";
 
+const ineffectiveDynamicImports = [];
+
+const failOnIneffectiveDynamicImport = {
+  name: "fail-on-ineffective-dynamic-import",
+  buildStart() {
+    ineffectiveDynamicImports.length = 0;
+  },
+  closeBundle() {
+    if (ineffectiveDynamicImports.length === 0) return;
+    this.error(
+      `${ineffectiveDynamicImports.length} ineffective dynamic import(s) — a lazy module is also ` +
+        `statically imported, so it will NOT get its own chunk:\n` +
+        ineffectiveDynamicImports.map((m) => `  - ${m}`).join("\n") +
+        `\n\nFix: if the eager exports live in a SIBLING file, import that file directly instead ` +
+        `of the barrel. If they live in the SAME file as the lazy export, split the file.`,
+    );
+  },
+};
+
 /**
  * Root package name for a resolved module (handles pnpm nested `node_modules`).
  * @param {string} id
@@ -191,7 +210,7 @@ export default defineConfig({
     "src/**/*.{ts,tsx,js,jsx}": "vp check --fix",
   },
 
-  plugins: [react(), tailwindcss(), mkcert(), injectMeta(mode)],
+  plugins: [react(), tailwindcss(), mkcert(), injectMeta(mode), failOnIneffectiveDynamicImport],
   server: {
     proxy: {
       "^/(.*\\.md|llms\\.txt)$": {
@@ -218,6 +237,13 @@ export default defineConfig({
         chunkFileNames: "assets/[name]-[hash].js",
         assetFileNames: "assets/[name]-[hash].[ext]",
         manualChunks,
+      },
+      onwarn(warning, defaultHandler) {
+        if (warning.code === "INEFFECTIVE_DYNAMIC_IMPORT") {
+          ineffectiveDynamicImports.push(warning.message);
+          return;
+        }
+        defaultHandler(warning);
       },
     },
   },
