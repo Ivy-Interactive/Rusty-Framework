@@ -44,8 +44,14 @@ use serde_json::{json, Map, Value};
 use super::widget_names::{ivy_widget, IvyWidget};
 
 /// Top-level keys that never become props: they are either structural in Ivy's
-/// `WidgetNode` (`type`, `id`, `children`) or carry the child subtree (`child`).
-const RESERVED_KEYS: [&str; 4] = ["type", "id", "children", "child"];
+/// `WidgetNode` (`type`, `id`, `children`), carry the child subtree (`child`), or are
+/// Rusty's own serde plumbing (`kind`).
+///
+/// `kind` is the internal tag of [`crate::views::view::Element`]
+/// (`#[serde(tag = "kind")]`), so every widget reached as a *child* carries
+/// `"kind": "widget"` alongside its real props. It describes Rusty's element tree, not
+/// the widget, and Ivy has no such field.
+const RESERVED_KEYS: [&str; 5] = ["type", "id", "children", "child", "kind"];
 
 /// The Ivy event names that some widget under `src/frontend/src/widgets/` actually
 /// reads via `events.includes(...)`. Derived from Rusty's `has<Event>` booleans, but
@@ -480,6 +486,38 @@ mod tests {
         let children = node["children"].as_array().unwrap();
         assert_eq!(children.len(), 1);
         assert_eq!(children[0]["type"], "Ivy.TextBlock");
+    }
+
+    #[test]
+    fn element_kind_tag_does_not_leak_into_props() {
+        // Element is #[serde(tag = "kind")], so a widget reached as a *child* carries
+        // "kind": "widget" merged in beside its real props. That describes Rusty's
+        // element tree, not the widget, and Ivy has no such field -- it must not
+        // survive into props. A top-level widget's own to_json() has no `kind`, so this
+        // only shows up one level down.
+        let card = Card::new().child(TextBlock::new("hi")).to_json();
+        assert_eq!(
+            card["children"][0]["kind"], "widget",
+            "Element's tag really is present in the input"
+        );
+
+        let node = to_ivy_node(&card).unwrap();
+        let child_props = node["children"][0]["props"].as_object().unwrap();
+        assert!(
+            !child_props.contains_key("kind"),
+            "Element's serde tag leaked into props: {:?}",
+            child_props
+        );
+        // The real props are still there.
+        assert_eq!(child_props["content"], "hi");
+
+        // Same for the singular-child path.
+        let tooltip = Tooltip::new("tip", TextBlock::new("hi")).to_json();
+        let tooltip_node = to_ivy_node(&tooltip).unwrap();
+        assert!(!tooltip_node["children"][0]["props"]
+            .as_object()
+            .unwrap()
+            .contains_key("kind"));
     }
 
     #[test]
