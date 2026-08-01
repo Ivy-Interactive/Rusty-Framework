@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '0 7 * * 1'   # Mondays 07:00 UTC - the periodic review, automated
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -136,3 +139,22 @@ jobs:
             exit 1
           fi
           echo "::warning::renovate.json present but Renovate has never run (${age}d of ${GRACE_DAYS}d grace). Install https://github.com/apps/renovate on $REPO, or delete the file."
+
+  cargo-majors:
+    # Renovate parks cargo majors and omits parked deps from the Dependency Dashboard
+    # entirely, so this is the only thing that surfaces them. Report-only by design.
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Report cargo major updates
+        run: node scripts/check-cargo-majors.mjs
