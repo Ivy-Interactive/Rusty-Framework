@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 
+use crate::core::apps::{AppFactory, AppIds, AppRegistry};
 use crate::core::query_cache::QueryService;
 use crate::core::reconciler::Reconciler;
 use crate::core::runtime::Runtime;
@@ -18,6 +19,8 @@ pub struct AppSession {
     pub reconciler: Reconciler,
     /// The services this session's views resolve through `use_service`.
     pub services: Arc<ServiceRegistry>,
+    /// The id of the app currently mounted in this session.
+    pub app_id: String,
 }
 
 /// Manages per-connection AppSessions, keyed by connection ID.
@@ -25,7 +28,10 @@ pub struct AppSession {
 /// share ownership, enabling admin/monitoring, graceful shutdown, and timeout enforcement.
 pub struct AppSessionStore {
     sessions: RwLock<HashMap<String, Arc<RwLock<AppSession>>>>,
-    root_factory: Arc<dyn Fn() -> Box<dyn View> + Send + Sync>,
+    /// The apps a connection can mount, resolved by id at connect and navigate time.
+    apps: Arc<AppRegistry>,
+    /// Registered once on `RustyServer`, folded into every session's own registry.
+    server_services: Arc<ServiceRegistry>,
     shutdown_tx: broadcast::Sender<()>,
     /// Shared by every session, so a server-scoped query is fetched once.
     query_service: Arc<QueryService>,
@@ -36,7 +42,17 @@ pub struct AppSessionStore {
 }
 
 impl AppSessionStore {
-    pub fn new(root_factory: Arc<dyn Fn() -> Box<dyn View> + Send + Sync>) -> Self {
+    /// Single-app store: `root_factory` is registered under [`AppIds::DEFAULT`], so
+    /// every connection mounts it whatever `?appId=` asks for.
+    pub fn new(root_factory: AppFactory) -> Self {
+        let mut apps = AppRegistry::new();
+        apps.register(AppIds::DEFAULT, "App", root_factory);
+        Self::with_apps(Arc::new(apps), Arc::new(ServiceRegistry::new()))
+    }
+
+    /// Multi-app store: connections resolve an app out of `apps`, and every session's
+    /// registry starts from `server_services`.
+    pub fn with_apps(apps: Arc<AppRegistry>, server_services: Arc<ServiceRegistry>) -> Self {
         let (shutdown_tx, _) = broadcast::channel(16);
         let query_service = Arc::new(QueryService::new());
         // Only spawn the tickers inside a runtime; `AppSessionStore::new` is also
@@ -49,12 +65,18 @@ impl AppSessionStore {
 
         AppSessionStore {
             sessions: RwLock::new(HashMap::new()),
-            root_factory,
+            apps,
+            server_services,
             shutdown_tx,
             query_service,
             server_signals: Arc::new(SignalRegistry::new()),
             query_tasks,
         }
+    }
+
+    /// The apps this store can mount.
+    pub fn apps(&self) -> &Arc<AppRegistry> {
+        &self.apps
     }
 
     /// The server-wide query cache, shared by every session.
@@ -67,11 +89,17 @@ impl AppSessionStore {
         &self.server_signals
     }
 
-    /// Create a new session with an isolated Runtime, Reconciler and service registry.
-    /// Registers the connection and returns an Arc reference to the session.
-    pub async fn create_session(&self, connection_id: String) -> Arc<RwLock<AppSession>> {
+    /// Build a session mounting `app_id`, without registering it in the store.
+    ///
+    /// Shared by new connections and by navigation, which replaces a live session's
+    /// contents in place.
+    pub fn build_session(&self, connection_id: &str, app_id: Option<&str>) -> AppSession {
         let services = Arc::new(ServiceRegistry::new());
-        services.register(Arc::new(AppContext::new(connection_id.clone())));
+        // Server-level services first, so the framework's per-connection services below
+        // always win: a `with_service::<AppContext>` must not be able to hand a session
+        // another connection's id (and with it, another connection's download URLs).
+        services.extend_from(&self.server_services);
+        services.register(Arc::new(AppContext::new(connection_id.to_string())));
         // Server-wide, shared across connections.
         services.register(Arc::clone(&self.query_service));
         services.register(Arc::new(ServerSignals::new(Arc::clone(
@@ -79,21 +107,72 @@ impl AppSessionStore {
         ))));
         // Per-connection.
         services.register(Arc::new(SignalRegistry::new()));
-        services.register(Arc::new(DownloadService::new(connection_id.clone())));
+        services.register(Arc::new(DownloadService::new(connection_id.to_string())));
 
-        let view = (self.root_factory)();
-        let runtime = Runtime::with_services(FuncView(view), Arc::clone(&services));
-        let reconciler = Reconciler::new();
-        let session = Arc::new(RwLock::new(AppSession {
-            runtime,
-            reconciler,
+        let (resolved_id, view) = match self.apps.resolve(app_id) {
+            Some(descriptor) => (descriptor.id.clone(), descriptor.create_view()),
+            None => (
+                AppIds::ERROR_NOT_FOUND.to_string(),
+                Box::new(|_ctx: &mut crate::views::view::BuildContext| {
+                    crate::views::view::Element::Empty
+                }) as Box<dyn View>,
+            ),
+        };
+
+        AppSession {
+            runtime: Runtime::with_services(FuncView(view), Arc::clone(&services)),
+            reconciler: Reconciler::new(),
             services,
-        }));
+            app_id: resolved_id,
+        }
+    }
+
+    /// Create a new session with an isolated Runtime, Reconciler and service registry.
+    /// Registers the connection and returns an Arc reference to the session.
+    pub async fn create_session(&self, connection_id: String) -> Arc<RwLock<AppSession>> {
+        self.create_session_for_app(connection_id, None).await
+    }
+
+    /// Create a session mounting a specific app, falling back to the default app when
+    /// `app_id` is `None` or names an app that is not registered.
+    pub async fn create_session_for_app(
+        &self,
+        connection_id: String,
+        app_id: Option<&str>,
+    ) -> Arc<RwLock<AppSession>> {
+        let session = Arc::new(RwLock::new(self.build_session(&connection_id, app_id)));
 
         let mut sessions = self.sessions.write().await;
         sessions.insert(connection_id, session.clone());
 
         session
+    }
+
+    /// Swap the app mounted in a live session.
+    ///
+    /// Returns `false` without touching the session when `app_id` is not registered — a
+    /// typo must not look like a successful navigation, so this uses [`AppRegistry::get`]
+    /// rather than `resolve`, which would fall back to the default app.
+    pub async fn navigate_session(&self, session: &Arc<RwLock<AppSession>>, app_id: &str) -> bool {
+        if self.apps.get(app_id).is_none() {
+            return false;
+        }
+
+        // Reuse the connection id so download URLs and `AppContext` stay stable for the
+        // lifetime of the socket.
+        let connection_id = {
+            let guard = session.read().await;
+            guard
+                .services
+                .get::<AppContext>()
+                .map(|ctx| ctx.connection_id.clone())
+                .unwrap_or_default()
+        };
+
+        let fresh = self.build_session(&connection_id, Some(app_id));
+        let mut guard = session.write().await;
+        *guard = fresh;
+        true
     }
 
     /// Remove a session on disconnect.

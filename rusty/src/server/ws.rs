@@ -1,6 +1,6 @@
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{header, StatusCode},
     response::IntoResponse,
     routing::get,
@@ -13,11 +13,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::core::apps::{AppFactory, AppIds, AppRegistry};
 use crate::core::runtime::RuntimeMessage;
+use crate::core::services::ServiceRegistry;
 use crate::views::view::View;
 
 use super::download::DownloadService;
-use super::session::AppSessionStore;
+use super::session::{AppSession, AppSessionStore};
 
 /// Messages sent from client to server.
 #[derive(Debug, Serialize, Deserialize)]
@@ -54,6 +56,15 @@ pub enum ServerMessage {
     },
 }
 
+/// Query parameters accepted when opening the WebSocket at `/ws`.
+#[derive(Debug, Default, Deserialize)]
+pub struct ConnectParams {
+    /// The app to mount for this connection. Unknown or absent falls back to the
+    /// default app.
+    #[serde(rename = "appId")]
+    pub app_id: Option<String>,
+}
+
 /// Loopback-only default: a dev server or test harness should not be reachable
 /// from the local network. Callers that need external access opt in explicitly
 /// via [`RustyServer::with_bind_address`].
@@ -68,22 +79,72 @@ pub struct AppState {
 pub struct RustyServer {
     port: u16,
     bind_address: String,
-    root_view: Box<dyn Fn() -> Box<dyn View> + Send + Sync>,
+    apps: AppRegistry,
+    services: ServiceRegistry,
     static_dir: Option<PathBuf>,
 }
 
 impl RustyServer {
+    /// Single-app server: `root_factory` is registered under [`AppIds::DEFAULT`], so
+    /// every connection mounts it.
     pub fn new<F, V>(port: u16, root_factory: F) -> Self
     where
         F: Fn() -> V + Send + Sync + 'static,
         V: View,
     {
+        let factory: AppFactory = Arc::new(move || Box::new(root_factory()));
+        let mut apps = AppRegistry::new();
+        apps.register(AppIds::DEFAULT, "App", factory);
+
         RustyServer {
             port,
             bind_address: DEFAULT_BIND_ADDRESS.to_string(),
-            root_view: Box::new(move || Box::new(root_factory())),
+            apps,
+            services: ServiceRegistry::new(),
             static_dir: None,
         }
+    }
+
+    /// Server with no apps yet — add them with [`RustyServer::with_app`].
+    ///
+    /// A connection arriving before any app is registered gets an empty
+    /// [`AppIds::ERROR_NOT_FOUND`] session rather than a closed socket.
+    pub fn empty(port: u16) -> Self {
+        RustyServer {
+            port,
+            bind_address: DEFAULT_BIND_ADDRESS.to_string(),
+            apps: AppRegistry::new(),
+            services: ServiceRegistry::new(),
+            static_dir: None,
+        }
+    }
+
+    /// Register an app under `id`, selectable with `/ws?appId=<id>` and by a
+    /// `navigate` message. The first app registered becomes the default unless one is
+    /// registered under [`AppIds::DEFAULT`].
+    pub fn with_app<F, V>(
+        mut self,
+        id: impl Into<String>,
+        title: impl Into<String>,
+        factory: F,
+    ) -> Self
+    where
+        F: Fn() -> V + Send + Sync + 'static,
+        V: View,
+    {
+        let factory: AppFactory = Arc::new(move || Box::new(factory()));
+        self.apps.register(id, title, factory);
+        self
+    }
+
+    /// Register a server-level service, resolvable with `use_service` from every app on
+    /// every connection.
+    ///
+    /// Framework services (`AppContext`, `DownloadService`, the session `SignalRegistry`)
+    /// are registered per connection and always win over a value registered here.
+    pub fn with_service<T: Send + Sync + 'static>(self, value: T) -> Self {
+        self.services.register(Arc::new(value));
+        self
     }
 
     /// Bind to a specific address instead of the loopback default.
@@ -102,8 +163,8 @@ impl RustyServer {
 
     /// Build the axum router with WebSocket support.
     pub fn router(self) -> Router {
-        let root_factory: Arc<dyn Fn() -> Box<dyn View> + Send + Sync> = Arc::from(self.root_view);
-        let session_store = AppSessionStore::new(root_factory);
+        let session_store =
+            AppSessionStore::with_apps(Arc::new(self.apps), Arc::new(self.services));
         let state = Arc::new(AppState { session_store });
 
         let mut router = Router::new()
@@ -166,8 +227,12 @@ async fn health_handler() -> &'static str {
     "ok"
 }
 
-async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, state))
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    Query(params): Query<ConnectParams>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_socket(socket, state, params.app_id))
 }
 
 /// Serve a download registered by a view through `use_download`.
@@ -213,37 +278,47 @@ async fn download_handler(
         .into_response()
 }
 
-async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
+/// Build the session's tree, send it as a full `Refresh`, and reset the reconciler
+/// baseline to what was just sent.
+///
+/// Used for the initial render and after a navigation: in both cases the client holds
+/// no tree that `Update` patches could apply to.
+async fn send_refresh(
+    session_arc: &Arc<tokio::sync::RwLock<AppSession>>,
+    sender: &mut futures::stream::SplitSink<WebSocket, Message>,
+) {
+    let mut session = session_arc.write().await;
+    session.runtime.build().await;
+    if let Some(tree) = session.runtime.current_tree().await {
+        let msg = ServerMessage::Refresh {
+            widgets: tree.clone(),
+        };
+        session.reconciler.reconcile(&tree);
+        if let Ok(json) = serde_json::to_string(&msg) {
+            let _ = sender.send(Message::Text(json.into())).await;
+        }
+    }
+}
+
+async fn handle_socket(socket: WebSocket, state: Arc<AppState>, app_id: Option<String>) {
     let (mut sender, mut receiver) = socket.split();
 
     // Generate a unique connection ID and create an isolated session
     let connection_id = Uuid::new_v4().to_string();
     let session_arc = state
         .session_store
-        .create_session(connection_id.clone())
+        .create_session_for_app(connection_id.clone(), app_id.as_deref())
         .await;
     let mut shutdown_rx = state.session_store.subscribe_shutdown();
 
     // Send initial render from this session's own runtime
-    {
-        let mut session = session_arc.write().await;
-        session.runtime.build().await;
-        if let Some(tree) = session.runtime.current_tree().await {
-            let msg = ServerMessage::Refresh {
-                widgets: tree.clone(),
-            };
-            session.reconciler.reconcile(&tree);
-            if let Ok(json) = serde_json::to_string(&msg) {
-                let _ = sender.send(Message::Text(json.into())).await;
-            }
-        }
-    }
-    let event_tx = session_arc.read().await.runtime.event_sender();
+    send_refresh(&session_arc, &mut sender).await;
+    let mut event_tx = session_arc.read().await.runtime.event_sender();
 
     // Woken when a rebuild is queued outside the request path (async hooks
     // resolving, spawned tasks calling State::set). No polling: the task parks
     // until a producer actually signals.
-    let rebuild_notify = session_arc.read().await.runtime.rebuild_notifier();
+    let mut rebuild_notify = session_arc.read().await.runtime.rebuild_notifier();
 
     // Process incoming messages using this session's isolated runtime
     loop {
@@ -284,8 +359,32 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         }
                                     }
                                 }
-                                ClientMessage::Navigate { .. } => {
-                                    // Navigation handling (future)
+                                ClientMessage::Navigate { app_id, .. } => {
+                                    // Swap the mounted app for this session. An unknown id
+                                    // must not kill the connection - warn and hold position.
+                                    if state
+                                        .session_store
+                                        .navigate_session(&session_arc, &app_id)
+                                        .await
+                                    {
+                                        // The old runtime (and with it the event sender and
+                                        // the rebuild notifier) is gone.
+                                        {
+                                            let session = session_arc.read().await;
+                                            event_tx = session.runtime.event_sender();
+                                            rebuild_notify = session.runtime.rebuild_notifier();
+                                        }
+                                        // The whole tree was replaced, so the old reconciler
+                                        // baseline no longer applies: send a full Refresh
+                                        // rather than Update patches.
+                                        send_refresh(&session_arc, &mut sender).await;
+                                    } else {
+                                        tracing::warn!(
+                                            "Navigate to unknown app id '{}' ignored; staying on '{}'",
+                                            app_id,
+                                            session_arc.read().await.app_id
+                                        );
+                                    }
                                 }
                             },
                         }
