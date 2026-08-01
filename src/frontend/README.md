@@ -89,6 +89,7 @@ The frontend project uses **Vite+** integrated tools (**Oxlint** and **Oxfmt**) 
 ### Pre-commit Hooks
 
 We use a Husky npm package to set up the repo's pre-commit hook. It lints and formats staged frontend files and runs rustfmt on staged .rs files.
+The frontend step requires `node` on `PATH` (the local `vp` shim execs it); if it is missing the hook stops with an explicit error. Staged-Rust-only and conflict-marker commits do not need node.
 
 The active hook is `.husky/pre-commit` (`core.hooksPath` points at `.husky/_`), and its frontend step reads per-glob commands from the `lint-staged` key in `package.json`. Edit those two files. Vite+'s own `vp staged` runner is deliberately **not** used: husky's installer rewrites `core.hooksPath` on every `pnpm install`, so the two cannot coexist, and `.husky/pre-commit` also carries a merge-conflict-marker check that a `staged` glob map cannot express.
 
