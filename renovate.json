@@ -2,8 +2,15 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
   "dependencyDashboard": true,
+  "vulnerabilityAlerts": {
+    "enabled": true
+  },
   "packageRules": [
-    { "matchPackageNames": ["*"], "enabled": false },
+    {
+      "description": "Opt out of routine version bumps for everything; the group below re-enables the trio. Vulnerability fixes are exempt via the vulnerabilityAlerts block, which sets force.enabled=true.",
+      "matchPackageNames": ["*"],
+      "enabled": false
+    },
     {
       "groupName": "vite-plus toolchain",
       "matchPackageNames": ["vite-plus", "@voidzero-dev/vite-plus-core", "vitest"],
