@@ -233,6 +233,44 @@ impl View for CardApp {
     }
 }
 
+/// Exercises `use_download_stream` and `use_download_bytes`.
+///
+/// Both URLs start as `None` and are filled in by the mount effect, so they
+/// arrive over the WebSocket push path rather than in the first render. The
+/// URLs render as `code` text blocks because there is no anchor widget — the
+/// spec reads them out of the DOM and fetches them itself.
+struct DownloadsApp;
+
+impl View for DownloadsApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let stream_url = use_download_stream(
+            ctx,
+            || async {
+                Ok(futures::stream::iter(vec![
+                    Ok(bytes::Bytes::from("chunk-1;")),
+                    Ok(bytes::Bytes::from("chunk-2;")),
+                    Ok(bytes::Bytes::from("chunk-3;")),
+                ]))
+            },
+            "text/csv",
+            "stream-export.csv",
+        );
+        let bytes_url = use_download_bytes(
+            ctx,
+            b"buffered-body".to_vec(),
+            "application/json",
+            "buffered.json",
+        );
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Downloads Test"))
+            .child(TextBlock::code(&stream_url.get().unwrap_or_default()))
+            .child(TextBlock::code(&bytes_url.get().unwrap_or_default()))
+            .into()
+    }
+}
+
 /// Exercises `use_query`. The fetcher sleeps, so the loading-to-loaded
 /// transition arrives over the WebSocket push path rather than in the first
 /// render.
@@ -1039,6 +1077,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "layout" => RustyServer::new(port, || LayoutApp),
         "card" => RustyServer::new(port, || CardApp),
         "query" => RustyServer::new(port, || QueryApp),
+        "downloads" => RustyServer::new(port, || DownloadsApp),
         "data_table" => RustyServer::new(port, || DataTableApp),
         "form" => RustyServer::new(port, || FormApp),
         "diff_view" => RustyServer::new(port, || DiffViewApp),
@@ -1072,7 +1111,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("Unknown widget: {}", other);
             eprintln!(
                 "Known widgets: button, text, text_input, number_input, select, checkbox, \
-                 layout, card, query, data_table, form, diff_view, qr_code, \
+                 layout, card, query, downloads, data_table, form, diff_view, qr_code, \
                  activity_heatmap, terminal, rich_text_input, spacer, separator, \
                  layout_sizing, container, icon, image, avatar, callout, skeleton, \
                  expandable, list, text_area, slider, date_input, color_input, \
