@@ -68,7 +68,7 @@ Git hooks are husky (`.husky/pre-commit` + `package.json`'s `lint-staged`). Vite
 
 `.github/workflows/ci.yml` runs build, test, clippy, `cargo fmt --all -- --check`,
 frontend checks, and renovate-liveness on every push to `main` and every PR. All checks
-report independently — a failure in one does not skip the rest. A weekly `cargo-majors` job (`schedule`, plus `workflow_dispatch`) reports Cargo dependencies whose latest stable release is outside the major series declared in the manifests. It is report-only. This exists because `renovate.json` parks all cargo updates, and Renovate omits parked dependencies from the Dependency Dashboard entirely - a parked major is invisible, not a checkbox. As of 2026-08-02: `syn` `^2` -> 3.0.3, `tower-http` `^0.6` -> 0.7.0, `tokio-tungstenite` `^0.29` -> 0.30.0.
+report independently — a failure in one does not skip the rest. When any of those jobs fails on a push to `main`, `alert-on-red-main` opens or comments on a `ci-red` issue - it depends on all of them, so no job's failure is silent. A weekly `cargo-majors` job (`schedule`, plus `workflow_dispatch`) reports Cargo dependencies whose latest stable release is outside the major series declared in the manifests. It is report-only. This exists because `renovate.json` parks all cargo updates, and Renovate omits parked dependencies from the Dependency Dashboard entirely - a parked major is invisible, not a checkbox. As of 2026-08-02: `syn` `^2` -> 3.0.3, `tower-http` `^0.6` -> 0.7.0, `tokio-tungstenite` `^0.29` -> 0.30.0.
 
 `main` has no branch protection and no rulesets:
 

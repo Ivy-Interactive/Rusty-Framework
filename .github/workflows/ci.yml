@@ -41,7 +41,7 @@ jobs:
         run: cargo fmt --all -- --check
 
   alert-on-red-main:
-    needs: build
+    needs: [build, frontend, renovate-liveness, e2e]
     if: ${{ failure() && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
