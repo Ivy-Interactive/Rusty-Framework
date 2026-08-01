@@ -152,8 +152,9 @@ no eagerly-reachable module statically imports a runtime value from it**. One su
 the tree is enough: the static edge wins, the module is pulled into the eager graph, and the dynamic
 `import()` becomes a no-op that resolves something already loaded.
 
-Since `widgetMap.ts` is itself eager and imports around two dozen widgets eagerly, it is the module
-where this goes wrong.
+`widgetMap.ts` is where this goes wrong, because it is eagerly loaded and holds both halves: roughly
+65 widgets imported statically at the top of the file, and 49 `lazyWithRetry(() => import(...))` call
+sites in the map below. An eager import that reaches a lazy widget's module is all it takes.
 
 ### Two ways the edge gets created
 
