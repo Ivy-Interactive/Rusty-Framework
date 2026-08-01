@@ -2,6 +2,7 @@ use rusty::prelude::*;
 
 struct CounterApp;
 
+#[rusty::view]
 impl View for CounterApp {
     fn build(&self, ctx: &mut BuildContext) -> Element {
         let count = use_state(ctx, 0i32);
