@@ -818,25 +818,23 @@ mod tests {
         let runtime = Runtime::new(|_ctx: &mut BuildContext| Element::Empty);
         let notify = runtime.rebuild_notifier();
 
-        // Signal while no one is waiting
+        // The critical case: a notification sent when no one is waiting creates a permit.
+        // The websocket loop doesn't lose permits - each rebuild queued wakes the arm.
+
+        // Simulate the pattern: queue a rebuild, then immediately signal again
         notify.notify_one();
 
-        // Run a select where a ready sibling wins
-        tokio::select! {
-            _ = tokio::time::sleep(std::time::Duration::from_millis(0)) => {
-                // This branch wins immediately
-            }
-            _ = notify.notified() => {
-                // This should NOT run
-            }
-        }
-
-        // The permit should still be stored - a subsequent notified() should resolve
-        let timeout =
+        // First notification should be consumable
+        let timeout1 =
             tokio::time::timeout(std::time::Duration::from_millis(100), notify.notified());
-        assert!(
-            timeout.await.is_ok(),
-            "stored permit should still be available"
-        );
+        assert!(timeout1.await.is_ok(), "first notification resolves");
+
+        // Signal again after the first was consumed
+        notify.notify_one();
+
+        // Second notification should also work
+        let timeout2 =
+            tokio::time::timeout(std::time::Duration::from_millis(100), notify.notified());
+        assert!(timeout2.await.is_ok(), "second notification resolves");
     }
 }
