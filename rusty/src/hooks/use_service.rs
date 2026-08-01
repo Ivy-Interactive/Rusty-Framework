@@ -93,7 +93,7 @@ mod tests {
         let view_id = uuid::Uuid::new_v4();
         let mut ctx = BuildContext::with_services(&mut store, None, view_id, services);
 
-        let (_element, _child_id, _child_store) = ctx.child_view(ChildView, None);
+        let (_element, _child_id) = ctx.child_view(ChildView);
         assert_eq!(CHILD_SAW.lock().unwrap().take().unwrap(), "from parent");
     }
 }
