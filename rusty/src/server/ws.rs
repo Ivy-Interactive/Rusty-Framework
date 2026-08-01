@@ -432,9 +432,7 @@ mod tests {
             _ = notify.notified(), if !push_pending => {
                 unreachable!();
             }
-            _ = tokio::time::sleep_until(next_push), if push_pending => {
-                push_pending = false;
-            }
+            _ = tokio::time::sleep_until(next_push), if push_pending => {}
         }
 
         assert_eq!(
@@ -492,7 +490,7 @@ mod tests {
     async fn push_debounce_never_loses_a_signal_across_the_window() {
         let notify = std::sync::Arc::new(tokio::sync::Notify::new());
         let mut push_pending = false;
-        let mut next_push = tokio::time::Instant::now();
+        let next_push = tokio::time::Instant::now();
 
         notify.notify_one();
 
@@ -509,9 +507,7 @@ mod tests {
             _ = notify.notified(), if !push_pending => {
                 unreachable!("latch arm should be disabled");
             }
-            _ = tokio::time::sleep_until(next_push), if push_pending => {
-                push_pending = false;
-            }
+            _ = tokio::time::sleep_until(next_push), if push_pending => {}
         }
 
         let resolved =
