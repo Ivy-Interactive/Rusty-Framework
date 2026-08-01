@@ -33,6 +33,8 @@ toolchain. Five entries carry them — `devDependencies.vite`,
 change. Renovate does this automatically once its GitHub App is installed on the
 repo; until then, keep them in lockstep by hand.
 
+Git hooks are husky (`.husky/pre-commit` + `package.json`'s `lint-staged`). Vite+'s `vp staged` / `staged` config is intentionally unused — do not run `vp config`, which would install a competing `.vite-hooks` tree.
+
 ## CI
 
 `.github/workflows/ci.yml` runs build, test, clippy and `cargo fmt --all -- --check`
