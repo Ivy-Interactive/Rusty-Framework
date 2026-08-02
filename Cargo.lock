@@ -2106,6 +2106,7 @@ dependencies = [
  "axum",
  "bytes",
  "futures",
+ "rusty-filter",
  "rusty-ivyml",
  "rusty-macros",
  "serde",
@@ -2141,6 +2142,14 @@ dependencies = [
  "rusty",
  "tokio",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "rusty-filter"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

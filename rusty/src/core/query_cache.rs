@@ -685,6 +685,40 @@ impl QueryService {
         }
     }
 
+    /// Build a cache key from a base key and a parsed filter, so two subscribers
+    /// with equivalent filters share one entry.
+    ///
+    /// `base` comes back unchanged when there is nothing to filter by — `None`,
+    /// or a group holding no filters, which is what an empty query parses to.
+    /// Otherwise the filter follows a `?` separator in the canonical spelling
+    /// [`rusty_filter::canonical_key`] produces, so `[age] > 1` and
+    /// `[age] greater than 1` are one key rather than two.
+    ///
+    /// An associated function, not a method: it reads no cache state, which also
+    /// keeps it clear of this module's rule that the cache lock is never held
+    /// across an `.await`.
+    ///
+    /// ```
+    /// use rusty::core::QueryService;
+    /// use rusty_filter::parse_query_unchecked;
+    ///
+    /// let a = parse_query_unchecked("[age] > 1").unwrap();
+    /// let b = parse_query_unchecked("[age] greater than 1").unwrap();
+    /// assert_eq!(
+    ///     QueryService::filtered_key("people", Some(&a)),
+    ///     QueryService::filtered_key("people", Some(&b)),
+    /// );
+    /// assert_eq!(QueryService::filtered_key("people", None), "people");
+    /// ```
+    pub fn filtered_key(base: &str, filter: Option<&rusty_filter::FilterGroup>) -> String {
+        match filter {
+            Some(filter) if !filter.filters.is_empty() => {
+                format!("{base}?{}", rusty_filter::canonical_key(filter))
+            }
+            _ => base.to_string(),
+        }
+    }
+
     /// Transition an entry into `Fetching`/`Revalidating` and return the fetcher
     /// to spawn, or `None` when a fetch is already running.
     fn begin_fetch(entry: &mut QueryEntry, revalidating: bool) -> Option<ErasedFetcher> {
@@ -1555,5 +1589,70 @@ mod tests {
         assert_eq!(service.entry_state("a"), Some(QueryEntryState::Empty));
         assert_eq!(service.entry_state("b"), Some(QueryEntryState::Empty));
         assert_eq!(service.peek::<String>("a"), None);
+    }
+
+    fn filter(query: &str) -> rusty_filter::FilterGroup {
+        rusty_filter::parse_query_unchecked(query).expect("valid query")
+    }
+
+    #[test]
+    fn test_filtered_key_returns_the_base_when_there_is_no_filter() {
+        assert_eq!(QueryService::filtered_key("people", None), "people");
+        // An empty query parses to an empty group, so a cleared filter box must
+        // land back on the unfiltered entry instead of creating `people?`.
+        assert_eq!(
+            QueryService::filtered_key("people", Some(&filter(""))),
+            "people"
+        );
+        assert_eq!(
+            QueryService::filtered_key("people", Some(&rusty_filter::FilterGroup::default())),
+            "people"
+        );
+    }
+
+    #[test]
+    fn test_filtered_key_appends_the_canonical_filter() {
+        // The canonical spelling is the printer's, which is `>` rather than
+        // `greater than` — so the key does not echo the query as written.
+        assert_eq!(
+            QueryService::filtered_key("people", Some(&filter("[age] greater than 1"))),
+            "people?[age] > 1"
+        );
+        assert_eq!(
+            QueryService::filtered_key("people", Some(&filter(r#"[name] CONTAINS "a""#))),
+            r#"people?[name] contains "a""#
+        );
+    }
+
+    #[test]
+    fn test_equivalent_filters_share_one_key() {
+        // The point of keying on the canonical spelling: two subscribers who
+        // wrote the same filter differently must not each get their own fetch.
+        for [a, b] in [
+            ["[age] > 1", "[age] greater than 1"],
+            ["[age] = 7", "[age] = 007"],
+            ["[age] >= 1", "[age] GREATER THAN OR EQUAL 1"],
+        ] {
+            assert_eq!(
+                QueryService::filtered_key("people", Some(&filter(a))),
+                QueryService::filtered_key("people", Some(&filter(b))),
+                "{a:?} vs {b:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_different_filters_get_different_keys() {
+        let keys = [
+            QueryService::filtered_key("people", None),
+            QueryService::filtered_key("people", Some(&filter("[age] > 1"))),
+            QueryService::filtered_key("people", Some(&filter("[age] > 2"))),
+            QueryService::filtered_key("people", Some(&filter("[age] >= 1"))),
+            QueryService::filtered_key("other", Some(&filter("[age] > 1"))),
+        ];
+        let mut unique = keys.to_vec();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), keys.len(), "keys collided: {keys:?}");
     }
 }

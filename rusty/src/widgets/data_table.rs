@@ -1,5 +1,6 @@
 use crate::shared::{Align, Color, Icon, Size};
 use crate::views::view::Element;
+use rusty_filter::{ColumnDef, ColumnType, ParseError};
 use rusty_macros::Widget;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -17,6 +18,23 @@ pub enum ColType {
     Icon,
     Labels,
     Link,
+}
+
+/// A `DataTable` has eight cell types but the filter grammar's validator knows
+/// only five, so several collapse onto one. The mapping is the one
+/// [`ColumnType::normalize`] applies to the backend type names, which is what
+/// keeps a Rust-side filter agreeing with the browser's: `Icon` normalizes to
+/// `String` there, and `Labels` and `Link` are unknown names that fall back to
+/// `String`.
+impl From<ColType> for ColumnType {
+    fn from(col_type: ColType) -> Self {
+        match col_type {
+            ColType::Number => ColumnType::Number,
+            ColType::Boolean => ColumnType::Boolean,
+            ColType::Date | ColType::DateTime => ColumnType::Date,
+            ColType::Text | ColType::Icon | ColType::Labels | ColType::Link => ColumnType::String,
+        }
+    }
 }
 
 /// Sort direction applied to a column.
@@ -276,7 +294,14 @@ pub struct RowActionArgs {
 /// A typed data grid with per-column formatting, sorting and cell events.
 ///
 /// Rows travel inline in the widget JSON, exactly as [`crate::widgets::Table`] does.
-/// Ivy's `DataTableConnection` server-side query pipeline is not ported.
+///
+/// Ivy's `DataTableConnection` server-side query pipeline is not ported. What is
+/// available is filtering: [`DataTable::apply_filter`] runs a query in the
+/// grammar the browser's filter editor uses and keeps the matching rows. It has
+/// to be called by the app, though — the filter box in the rendered table talks
+/// to a gRPC `DataTableService` that Rusty does not implement, so typing there
+/// still goes nowhere. Sorting, aggregation and pagination are likewise not
+/// ported.
 #[derive(Clone, Serialize, Deserialize, Widget)]
 pub struct DataTable {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -361,6 +386,62 @@ impl DataTable {
     ) -> Self {
         self.on_row_action = Some(Arc::new(handler));
         self
+    }
+
+    /// The columns a filter query may name, as the filter grammar sees them.
+    ///
+    /// A column is offered only when it is `filterable` and not `hidden`, which
+    /// is the same test `DataTableFilterOption.tsx` applies before handing
+    /// columns to the browser's editor. Naming an excluded column is therefore a
+    /// `Column 'x' does not exist` error on both sides rather than a filter that
+    /// works on one of them.
+    pub fn filter_columns(&self) -> Vec<ColumnDef> {
+        self.columns
+            .iter()
+            .filter(|c| c.filterable && !c.hidden)
+            .map(|c| ColumnDef::new(c.name.clone(), c.col_type.into()))
+            .collect()
+    }
+    /// Keep only the rows matching `query`, which is parsed and validated against
+    /// [`DataTable::filter_columns`].
+    ///
+    /// An empty or whitespace-only query is valid and matches every row, so a
+    /// cleared filter box needs no special case.
+    ///
+    /// # Errors
+    ///
+    /// Returns the parse and validation errors when `query` is not a valid
+    /// filter. A syntax error is reported alone; semantic errors come one per
+    /// offending condition.
+    ///
+    /// ```
+    /// use rusty::widgets::{ColType, DataTable, DataTableColumn};
+    ///
+    /// let table = DataTable::new(vec![
+    ///     DataTableColumn::new("name", "Name", ColType::Text),
+    ///     DataTableColumn::new("age", "Age", ColType::Number),
+    /// ])
+    /// .rows(vec![
+    ///     serde_json::json!({"name": "Ada", "age": 41}),
+    ///     serde_json::json!({"name": "Bob", "age": 12}),
+    /// ]);
+    ///
+    /// let filtered = table.apply_filter("[age] > 18").expect("valid query");
+    /// assert_eq!(filtered.rows.len(), 1);
+    /// assert_eq!(filtered.rows[0]["name"], "Ada");
+    /// ```
+    pub fn apply_filter(mut self, query: &str) -> Result<Self, Vec<ParseError>> {
+        let columns = self.filter_columns();
+        let result = rusty_filter::parse_query(query, &columns);
+        match result.filters {
+            Some(filter) => {
+                self.rows = rusty_filter::retain_matching(&filter, self.rows, &columns);
+                Ok(self)
+            }
+            // `filters` and `errors` are never both populated, so the fallback
+            // here is unreachable rather than a silently empty error list.
+            None => Err(result.errors.unwrap_or_default()),
+        }
     }
 
     pub fn into_element(self) -> Element {
@@ -599,5 +680,118 @@ mod tests {
     fn test_data_table_into_element() {
         let el: Element = DataTable::new(vec![]).into();
         assert!(matches!(el, Element::Widget(_)));
+    }
+
+    #[test]
+    fn test_col_type_maps_onto_a_filter_column_type() {
+        // All eight variants, so adding a ninth to `ColType` fails to compile
+        // rather than silently filtering as text.
+        for (col_type, expected) in [
+            (ColType::Number, ColumnType::Number),
+            (ColType::Boolean, ColumnType::Boolean),
+            (ColType::Date, ColumnType::Date),
+            (ColType::DateTime, ColumnType::Date),
+            (ColType::Text, ColumnType::String),
+            (ColType::Icon, ColumnType::String),
+            (ColType::Labels, ColumnType::String),
+            (ColType::Link, ColumnType::String),
+        ] {
+            assert_eq!(ColumnType::from(col_type), expected, "{col_type:?}");
+        }
+    }
+
+    #[test]
+    fn test_filter_columns_excludes_non_filterable_and_hidden() {
+        let table = DataTable::new(vec![
+            DataTableColumn::new("name", "Name", ColType::Text),
+            DataTableColumn::new("age", "Age", ColType::Number),
+            DataTableColumn::new("secret", "Secret", ColType::Text).filterable(false),
+            DataTableColumn::new("internal", "Internal", ColType::Text).hidden(true),
+            // Excluded by either test alone, so still excluded by both.
+            DataTableColumn::new("both", "Both", ColType::Text)
+                .filterable(false)
+                .hidden(true),
+        ]);
+
+        let columns = table.filter_columns();
+        assert_eq!(
+            columns,
+            vec![
+                ColumnDef::new("name", ColumnType::String),
+                ColumnDef::new("age", ColumnType::Number),
+            ]
+        );
+    }
+
+    fn people() -> DataTable {
+        DataTable::new(vec![
+            DataTableColumn::new("name", "Name", ColType::Text),
+            DataTableColumn::new("age", "Age", ColType::Number),
+            DataTableColumn::new("secret", "Secret", ColType::Text).filterable(false),
+        ])
+        .rows(vec![
+            json!({"name": "Ada", "age": 41, "secret": "x"}),
+            json!({"name": "Bob", "age": 12, "secret": "y"}),
+            json!({"name": "Ann", "age": 30, "secret": "x"}),
+        ])
+    }
+
+    #[test]
+    fn test_apply_filter_keeps_only_matching_rows() {
+        let filtered = people()
+            .apply_filter(r#"[age] > 18 AND [name] starts with "A""#)
+            .expect("valid query");
+        let names: Vec<&str> = filtered
+            .rows
+            .iter()
+            .map(|r| r["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, ["Ada", "Ann"]);
+        // Everything else about the table survives.
+        assert_eq!(filtered.columns.len(), 3);
+    }
+
+    #[test]
+    fn test_apply_filter_with_an_empty_query_keeps_every_row() {
+        assert_eq!(people().apply_filter("").expect("valid").rows.len(), 3);
+        assert_eq!(people().apply_filter("   ").expect("valid").rows.len(), 3);
+    }
+
+    #[test]
+    fn test_apply_filter_on_a_non_filterable_column_says_it_does_not_exist() {
+        // The column is on the table but not in `filter_columns`, so the query
+        // gets the same error the browser's editor would give for a name it was
+        // never offered.
+        let errors = people()
+            .apply_filter(r#"[secret] = "x""#)
+            .expect_err("secret is not filterable");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].message, "Column 'secret' does not exist");
+    }
+
+    #[test]
+    fn test_apply_filter_reports_a_syntax_error() {
+        let errors = people().apply_filter("[age] > ").expect_err("no operand");
+        assert_eq!(errors.len(), 1);
+        assert!(
+            errors[0].message.contains("<EOF>"),
+            "unexpected message: {}",
+            errors[0].message
+        );
+    }
+
+    #[test]
+    fn test_apply_filter_filters_a_datetime_column_by_iso_order() {
+        // `DateTime` normalizes to the grammar's `date`, so an ISO string
+        // comparison works rather than falling back to text comparison.
+        let table = DataTable::new(vec![DataTableColumn::new("at", "At", ColType::DateTime)])
+            .rows(vec![
+                json!({"at": "2024-06-01T09:00:00Z"}),
+                json!({"at": "2023-01-01T09:00:00Z"}),
+            ])
+            .apply_filter(r#"[at] > "2024-01-01""#)
+            .expect("valid query");
+        assert_eq!(table.rows.len(), 1);
+        assert_eq!(table.rows[0]["at"], "2024-06-01T09:00:00Z");
     }
 }

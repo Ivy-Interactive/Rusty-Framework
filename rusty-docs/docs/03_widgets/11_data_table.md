@@ -101,9 +101,51 @@ DataTable::new(vec![
 .into()
 ```
 
+### Server-side filtering
+
+`apply_filter` runs a query in the same grammar Ivy's filter editor uses and
+returns a table holding only the matching rows. See
+[Filters](../02_concepts/07_filters.md) for the grammar itself.
+
+```rust
+let table = DataTable::new(vec![
+    DataTableColumn::new("name", "Name", ColType::Text),
+    DataTableColumn::new("age", "Age", ColType::Number),
+])
+.rows(vec![
+    json!({"name": "Alice", "age": 30}),
+    json!({"name": "Bob", "age": 25}),
+]);
+
+let filtered = table.apply_filter("[age] > 28").expect("valid query");
+assert_eq!(filtered.rows.len(), 1);
+```
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `.filter_columns()` | `Vec<ColumnDef>` | The columns a query may name, as the grammar sees them |
+| `.apply_filter(q)` | `Result<DataTable, Vec<ParseError>>` | Keep the rows matching `q`; `Err` carries the parse and validation errors |
+
+A column is offered to `filter_columns` only when it is `filterable` and not
+`hidden`, which is the same test the frontend applies before handing columns to
+its editor. Naming an excluded column therefore gets
+`Column 'x' does not exist` on both sides rather than working on one of them.
+Each `ColType` maps onto one of the grammar's five types: `Number` to `number`,
+`Boolean` to `boolean`, `Date` and `DateTime` to `date`, and `Text`, `Icon`,
+`Labels` and `Link` to `string`.
+
+An empty or whitespace-only query is valid and keeps every row, so clearing a
+filter needs no special case.
+
 ### Limitations
 
 Rows travel inline in the widget JSON, exactly as `Table` does: the whole set is
 serialized on every build. Ivy's `DataTableConnection` — the server-side query
 pipeline that pages, sorts and filters large datasets on demand — is not ported,
-so paginate or pre-filter in your own code before handing rows to the widget.
+so paginate in your own code before handing rows to the widget.
+
+Filtering is available, but only when **your code** calls `apply_filter`. The
+filter box in the rendered table sends its query to a gRPC `DataTableService`
+that Rusty does not implement, so typing there still goes nowhere; the same
+applies to sorting and to the search box. Treat `allow_filtering`,
+`allow_sorting` and `show_search` as frontend chrome until that service exists.

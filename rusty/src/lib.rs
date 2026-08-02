@@ -25,6 +25,14 @@ pub mod prelude {
         SubmitHandler, Validator, View,
     };
     pub use crate::widgets::*;
+    /// The crate itself, so `rusty_filter::lexer` and the other modules are
+    /// reachable without a second dependency line in `Cargo.toml`.
+    pub use rusty_filter;
+    pub use rusty_filter::{
+        canonical_key, count_matches, evaluate, parse_query, parse_query_unchecked,
+        retain_matching, to_query_string, validate_filter_group, ColumnDef, ColumnType, Condition,
+        ErrorSeverity, Filter, FilterFunction, FilterGroup, LogicalOp, ParseError, ParseResult,
+    };
 }
 
 // Re-export the derive macro

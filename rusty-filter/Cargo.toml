@@ -1,0 +1,11 @@
+[package]
+name = "rusty-filter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Filter query grammar parser and AST for Rusty-Framework"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

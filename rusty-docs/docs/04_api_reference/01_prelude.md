@@ -93,3 +93,31 @@ Note the argument order: wherever a hook takes dependencies, they come **before*
 | Type | Description |
 |------|-------------|
 | `RustyServer` | WebSocket server — `new(port, factory).serve().await` |
+
+### Filters
+
+Re-exported from `rusty_filter`. See [Filters](../02_concepts/07_filters.md).
+
+| Item | Description |
+|------|-------------|
+| `parse_query(q, &columns)` | Parse and validate, returning `ParseResult` |
+| `parse_query_unchecked(q)` | Parse without a column schema |
+| `evaluate(&filter, &row, &columns)` | Does one row match? |
+| `retain_matching(&filter, rows, &columns)` | Keep the matching rows |
+| `count_matches(&filter, &rows, &columns)` | Count the matching rows |
+| `validate_filter_group(&filter, &columns)` | Semantic errors only |
+| `to_query_string(&filter)` | Print an AST back to a query |
+| `canonical_key(&filter)` | The same string, named for cache-key use |
+| `ColumnDef` | One filterable column — `new(name, ColumnType)` |
+| `ColumnType` | `String`, `Number`, `Boolean`, `Date`, `Enum` |
+| `FilterGroup` | `op` plus a list of `Filter` |
+| `Filter` | A `Condition` or a nested `FilterGroup`, optionally negated |
+| `Condition` | `column`, `function`, `args` |
+| `FilterFunction` | `Equals`, `GreaterThan`, `Contains`, `IsBlank`, … |
+| `LogicalOp` | `And`, `Or` |
+| `ParseResult` | `filters` **or** `errors`, never both |
+| `ParseError` | `message`, `start`, `end`, `severity` |
+| `ErrorSeverity` | `Error`, `Warning` |
+
+The crate itself is re-exported too, so `rusty_filter::lexer` and the other
+modules are reachable without adding a second dependency.
