@@ -212,6 +212,11 @@ source file and chunk name reported). This replaces an earlier plugin that promo
 gate was silent while both known bug shapes built with exit 0. Reading the module graph works on the
 pinned version.
 
+Because it reads the emitted graph, it is blind to an edge that never reaches the graph: a named
+import of a lazy module whose binding is never used is elided by Rolldown, so no eager edge exists
+and the build correctly exits 0. `pnpm lint` and `tsc -b` both reject that code anyway, and the
+source-level test below reports it directly.
+
 Chunk size is not a signal. The defeated chunk is still emitted at close to its normal size (13,952
 bytes vs 13,925 correct), so the "69-byte facade" symptom described in older notes no longer appears.
 
@@ -232,9 +237,11 @@ double-quoted `import"./ChatWidget-<hash>.js"` or `from"./ChatWidget-<hash>.js"`
 list to check other widgets; names that share a chunk with another widget have no chunk of their own
 and will simply not match.
 
-A cheaper guard for a barrel you have already fixed is a unit test asserting the barrel does not
-mention the lazy widget - see `src/widgets/lists/index.test.ts`. That catches a re-added `export`
-without a build, though only for the barrel it names.
+A cheaper guard covering every lazy entry is `src/widgets/__tests__/lazyWidgetBarrels.test.ts`. It
+walks static, non-`type` imports from `src/index.tsx` and fails if any `widgetMap.ts` `import()`
+target is eagerly reachable, printing the whole import chain that created the edge. It reads source
+only, so it needs no build and runs in milliseconds - a fast complement to the build-time gate
+above, not a replacement for it.
 
 ### Barrels with no importers are inert
 
