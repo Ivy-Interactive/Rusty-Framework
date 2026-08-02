@@ -7,9 +7,7 @@ import CopyToClipboardButton from "@/components/CopyToClipboardButton";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
 
-const SyntaxHighlighter = lazyWithRetry(() =>
-  import("react-syntax-highlighter").then((mod) => ({ default: mod.Prism })),
-);
+const SyntaxHighlighter = lazyWithRetry(() => import("@/lib/prismLight"));
 
 const MermaidRenderer = lazyWithRetry(() => import("../MermaidRenderer"));
 const GraphvizRenderer = lazyWithRetry(() => import("../GraphvizRenderer"));

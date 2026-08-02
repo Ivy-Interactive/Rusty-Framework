@@ -98,6 +98,10 @@ impl Runtime {
     }
 
     /// Build a specific view (or root if None).
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the rebuild loop owns the hook index; `clippy.toml` forbids `reset` to view code"
+    )]
     async fn build_view(&mut self, target_view_id: Option<ViewId>) -> Element {
         let view_id = target_view_id.unwrap_or_else(|| self.view_tree.root_id());
 
@@ -139,18 +143,26 @@ impl Runtime {
             *reg = registry;
         }
 
-        // Execute effects
-        let store = self.hook_stores.get_mut(&view_id).unwrap();
+        // Execute effects. Child-view effects are merged into the parent's list,
+        // so each cleanup is stored in the store of the view that registered it
+        // (keyed by `(view_id, hook_index)`) rather than in the root's store.
+        let root_store = self.hook_stores.get_mut(&view_id).unwrap();
         for effect_record in effects {
             let idx = effect_record.hook_index;
+            let Some(store) = root_store.store_for_mut(view_id, effect_record.view_id) else {
+                continue;
+            };
             if let Some(entry) = store.effects.get_mut(&idx) {
                 if let Some(cleanup) = entry.cleanup.take() {
                     cleanup();
                 }
             }
+            // Resolved again because the callback must run with no borrow held.
             let cleanup = (effect_record.callback)();
-            if let Some(entry) = store.effects.get_mut(&idx) {
-                entry.cleanup = cleanup;
+            if let Some(store) = root_store.store_for_mut(view_id, effect_record.view_id) {
+                if let Some(entry) = store.effects.get_mut(&idx) {
+                    entry.cleanup = cleanup;
+                }
             }
         }
 
@@ -514,14 +526,18 @@ mod tests {
         let mut parent_store = HookStore::new();
         let parent_view_id = uuid::Uuid::new_v4();
 
-        let mut ctx = BuildContext::with_view_id(&mut parent_store, None, parent_view_id);
+        let (child_element, child_id, parent_state) = {
+            let mut ctx = BuildContext::with_view_id(&mut parent_store, None, parent_view_id);
 
-        // Parent uses its own state
-        let parent_state = use_state(&mut ctx, 0i32);
-        parent_state.set(42);
+            // Parent uses its own state
+            let parent_state = use_state(&mut ctx, 0i32);
+            parent_state.set(42);
 
-        // Embed a child view — it should get its own isolated HookStore
-        let (child_element, child_id, child_store) = ctx.child_view(ChildView, None);
+            // Embed a child view — it should get its own isolated HookStore
+            let (child_element, child_id) = ctx.child_view(ChildView);
+            (child_element, child_id, parent_state)
+            // ctx (and its &mut parent_store borrow) ends here
+        };
 
         // Verify the child produced its element
         let json = serde_json::to_value(&child_element).unwrap().to_string();
@@ -530,7 +546,12 @@ mod tests {
         // Verify the child got a different ViewId
         assert_ne!(parent_view_id, child_id);
 
-        // Verify the child has its own HookStore with state
+        // Verify the child's HookStore is persisted under the parent, keyed by
+        // the child's ViewId, and holds the child's own state
+        let child_store = parent_store
+            .child_stores
+            .get(&child_id)
+            .expect("child store persisted under parent");
         assert!(
             !child_store.states.is_empty(),
             "Child should have its own state"
@@ -610,7 +631,7 @@ mod tests {
         );
 
         // Child view should be able to read the parent's context via ancestor walk
-        let (child_element, _child_id, _child_store) = ctx.child_view(ChildView, None);
+        let (child_element, _child_id) = ctx.child_view(ChildView);
 
         let json = serde_json::to_value(&child_element).unwrap().to_string();
         assert!(

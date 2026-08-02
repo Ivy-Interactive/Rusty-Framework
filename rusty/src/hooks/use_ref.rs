@@ -15,6 +15,10 @@ pub type Ref<T> = State<T>;
 ///
 /// Like `use_state`, the value persists in the HookStore. Unlike `use_state`,
 /// calling `set()` or `update()` does NOT send a rebuild notification.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "this *is* a hook implementation; `clippy.toml` forbids the slot machinery to view code"
+)]
 pub fn use_ref<T: Send + Sync + Clone + 'static>(ctx: &mut BuildContext, initial: T) -> Ref<T> {
     let idx = ctx.next_hook_index();
     ctx.store

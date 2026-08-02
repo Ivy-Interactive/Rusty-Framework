@@ -1,0 +1,25 @@
+# Clippy configuration for the workspace.
+#
+# A genuine custom lint pass needs `rustc_private` on nightly (or cargo-dylint),
+# and CI pins `dtolnay/rust-toolchain@stable`. `disallowed_methods` is what
+# stable clippy can enforce, and it does resolve both free functions and
+# inherent methods — verified on this repo at rust 1.95.0.
+#
+# The list is deliberately short: the raw hook-slot machinery, which nothing
+# outside a hook implementation may call. Hook state is keyed by call index, so a
+# view that allocates or rewinds an index by hand desynchronizes every hook after
+# it — and unlike a conditional hook call, `#[rusty::view]` cannot see it (that
+# attribute inspects hook *calls*, and it is opt-in per impl block).
+#
+# `clippy.toml` has no path scoping, so the lint also fires at the legitimate
+# definition sites inside `rusty/src/hooks/**`. Those carry `#[expect(..)]`
+# rather than `#[allow(..)]`: an expectation that stops being needed reports
+# `unfulfilled_lint_expectations`, so the annotations cannot silently rot.
+#
+# Do not grow this list with anything `#[rusty::view]` already covers — prefer
+# the attribute, which points at the offending line and can be allowed per block.
+disallowed-methods = [
+  { path = "rusty::views::view::BuildContext::next_hook_index", reason = "allocates a hook slot; only a hook implementation may call it. In a view body it shifts every later hook's slot" },
+  { path = "rusty::views::view::BuildContext::reset", reason = "rewinds the hook index to 0; only the runtime's rebuild loop and `child_view` may call it. Mid-build it makes every later hook reuse slot 0" },
+  { path = "rusty::hooks::hook_store::HookStore::get_or_init_state", reason = "addresses a hook slot by number, bypassing `next_hook_index`. Use `use_state` or `use_ref` instead" },
+]

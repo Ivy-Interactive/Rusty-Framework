@@ -89,10 +89,13 @@ Rusty emits widget type names in `snake_case` (e.g., `"data_table"`, `"qr_code"`
 
 The vendored Ivy React frontend at `src/frontend` expects widget type names in the format `"Ivy.PascalCase"` (e.g., `"Ivy.DataTable"`, `"Ivy.Terminal"`). The `shared::widget_names` module records the mapping between Rusty's `snake_case` names and Ivy's keys:
 
-- 14 widgets map mechanically (`badge` → `"Ivy.Badge"`, `button` → `"Ivy.Button"`, etc.)
-- 2 widgets are renamed (`select` → `"Ivy.SelectInput"`, `checkbox` → `"Ivy.BoolInput"`)
+All 38 widget types have an entry:
+
+- 25 widgets map mechanically (`badge` → `"Ivy.Badge"`, `button` → `"Ivy.Button"`, etc.)
+- 4 widgets are renamed (`select` → `"Ivy.SelectInput"`, `checkbox` → `"Ivy.BoolInput"`, `container` → `"Ivy.Box"`, `date_input` → `"Ivy.DateTimeInput"`)
 - 1 widget maps one-to-many (`layout` → `"Ivy.StackLayout"` or `"Ivy.GridLayout"` depending on the `direction` prop)
-- 4 widgets have no Ivy counterpart (`activity_heatmap`, `diff_view`, `qr_code`, `rich_text_input`)
+- 1 widget collapses into a *variant* of another (`text_area` → `"Ivy.TextInput"` with `variant: "Textarea"`, since Ivy has no textarea widget). This is `IvyWidget::WithProp`, which synthesizes a prop Rust never sends — as distinct from `ByProp`, which reads one Rust already sends.
+- 7 widgets have no Ivy counterpart (`activity_heatmap`, `diff_view`, `multi_select`, `qr_code`, `radio_group`, `rich_text_input`, `slider`)
 
 ```rust
 use rusty::shared::{ivy_widget, ivy_widget_for, IvyWidget};
@@ -108,11 +111,26 @@ let button_json = Button::new("Click").to_json();
 let ivy_key = ivy_widget_for(&button_json); // Some("Ivy.Button")
 ```
 
-**Note:** Wiring `src/frontend` to Rusty requires more than translating type names. An adapter must also:
+### Translating a Whole Node
 
-1. Nest props under a `props` object (Ivy's `WidgetNode` structure)
-2. Build an `events: string[]` array from Rusty's `has<Event>` booleans
-3. Reconcile three event casings:
-   - Rust event registration uses lowercase (`"click"`)
-   - The E2E harness sends camelCase (`"onClick"`)
-   - Ivy widgets expect PascalCase (`"OnClick"`)
+Type names are only part of the gap. `shared::ivy_node` translates a serialized Rusty widget tree into Ivy's `WidgetNode` shape — nesting props, deriving the events array, recasing enum values, and normalizing children. It is pure and, like `widget_names`, unused by Rusty itself.
+
+```rust
+use rusty::shared::to_ivy_node;
+
+let node = to_ivy_node(&Button::new("Save").on_click(|| {}).to_json()).unwrap();
+// { "type": "Ivy.Button", "id": "…", "props": { "title": "Save", … },
+//   "children": [], "events": ["OnClick"] }
+```
+
+`to_ivy_node` returns `None` for a `RustOnly` or unknown type; such children are dropped from `children` rather than emitted as `null`, since Ivy maps over the array unconditionally.
+
+Three things a reader cannot infer from the mapping table:
+
+- **`terminal`'s `OnResize` and `OnInput` have nowhere to land.** `terminal` maps to `Ivy.Terminal`, but `TerminalWidget.tsx` reads no `events` prop, so those two names — along with `OnToggle` (`expandable`), `OnDayClick` and `OnLineClick` — are filtered out by the `IVY_EVENT_NAMES` allow-list. Stripping `has` from every flag would advertise handlers Ivy never invokes.
+- **`field` and `tooltip` serialize a singular `"child"`, not `"children"`.** Ivy has one `children?: WidgetNode[]`, so the adapter wraps the single child in a one-element array. A recursive translation reading only `children` silently drops both subtrees.
+- **Enum values are a rename table, not a recasing.** Rust enums carry `#[serde(rename_all = "camelCase")]`, but several Ivy vocabularies differ by more than case: `ButtonVariant::Danger` → `"Destructive"`, `Density::{Compact,Normal,Comfortable}` → `"Small"/"Medium"/"Large"`, and `TextVariant::{Heading1,Code,Markdown}` → `"H1"/"Monospaced"/"Lead"`. Recasing is restricted to an allow-list of enum props (`variant`, `direction`, `density`, `color`, `orientation`) so user text such as `content` and `title` is never touched.
+
+Event casing on the **inbound** side is already handled elsewhere: `EventName::canonicalize` accepts `"OnClick"`, `"onClick"` and `"click"` alike, so Ivy's PascalCase names resolve against Rust's lowercase registrations without an adapter.
+
+**Still missing:** `src/frontend` speaks SignalR (`use-backend.tsx`), while `rusty-server` serves plain JSON WebSocket frames. That transport gap, not the node shape, is the remaining blocker to wiring the vendored frontend.

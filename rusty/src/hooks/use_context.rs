@@ -16,6 +16,10 @@ pub fn create_context<T: Send + Sync + Clone + 'static>(ctx: &mut BuildContext, 
 ///
 /// Walks the ancestor chain from the current view upward, checking each view's
 /// HookStore for a matching context value. Panics if no context of type `T` is found.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "this *is* a hook implementation; `clippy.toml` forbids the slot machinery to view code"
+)]
 pub fn use_context<T: Send + Sync + Clone + 'static>(ctx: &mut BuildContext) -> T {
     let _idx = ctx.next_hook_index();
     let type_id = TypeId::of::<T>();
@@ -112,7 +116,7 @@ mod tests {
         );
 
         // Child reads the context — gets a snapshot
-        let (_element, _child_id, _child_store) = ctx.child_view(ChildView, None);
+        let (_element, _child_id) = ctx.child_view(ChildView);
         let child_saw = CHILD_RESULT.lock().unwrap().take().unwrap();
         assert_eq!(child_saw, "blue");
 
@@ -135,7 +139,7 @@ mod tests {
         assert_eq!(parent_theme.primary_color, "red");
 
         // Build another child — it should see "red" since snapshot is taken at child_view() time
-        let (_element2, _child_id2, _child_store2) = ctx.child_view(ChildView, None);
+        let (_element2, _child_id2) = ctx.child_view(ChildView);
         let child2_saw = CHILD_RESULT.lock().unwrap().take().unwrap();
         assert_eq!(child2_saw, "red");
     }

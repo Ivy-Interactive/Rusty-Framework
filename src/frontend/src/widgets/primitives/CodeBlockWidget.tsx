@@ -1,9 +1,7 @@
 import CopyToClipboardButton from "@/components/CopyToClipboardButton";
 import { getHeight, getWidth } from "@/lib/styles";
 import React, { CSSProperties, useMemo, memo, lazy, Suspense } from "react";
-const SyntaxHighlighter = lazy(() =>
-  import("react-syntax-highlighter").then((mod) => ({ default: mod.Prism })),
-);
+const SyntaxHighlighter = lazy(() => import("@/lib/prismLight"));
 import { createPrismTheme } from "@/lib/prismTheme";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";

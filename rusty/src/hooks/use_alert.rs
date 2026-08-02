@@ -26,9 +26,10 @@ pub type ShowAlert = Arc<
 /// Put the element anywhere in the returned tree; it renders nothing until shown.
 ///
 /// Ivy nests the dialog in a `FuncView` so opening it does not re-render the
-/// parent. Rusty's `child_view` needs a `HookStore` the caller must thread, which
-/// a hook cannot do, so the state lives in the calling view and the parent
-/// rebuild that `State::set` already triggers re-renders the dialog.
+/// parent. Here the state lives in the calling view instead, and the parent
+/// rebuild that `State::set` already triggers re-renders the dialog. Rusty's
+/// `child_view` would also work now that the parent persists the child's
+/// `HookStore` itself, but scoping the rebuild is a separate change.
 pub fn use_alert(ctx: &mut BuildContext) -> (Element, ShowAlert) {
     // Only `open` triggers the rebuild; the options and callback are set in the
     // same breath, so making them refs avoids two redundant rebuild signals.
