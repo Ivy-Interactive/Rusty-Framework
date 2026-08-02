@@ -1,0 +1,4 @@
+# Shell scripts must check out LF: /bin/sh on Linux CI is dash, which fails
+# with `Syntax error: "|" unexpected` on a CRLF script. src/frontend has its
+# own .gitattributes; this covers scripts/ and .husky/ at the repo root.
+*.sh text eol=lf

@@ -1187,9 +1187,10 @@ mod tests {
     use std::sync::Arc;
 
     /// The harness apps are served by `AppSessionStore::create_session`, which
-    /// registers these services. `use_query` and `use_download_stream` panic
-    /// without them, so a new hook used by a harness app has to be added here
-    /// too.
+    /// registers these services. `use_query` panics without them, and so does
+    /// `use_download_stream` -- keep this list in step with the `register` calls
+    /// in `rusty/src/server/session.rs`, or adding a harness app that uses a new
+    /// hook fails `all_widget_kinds_build_a_tree` rather than the app itself.
     fn harness_services() -> Arc<ServiceRegistry> {
         let services = Arc::new(ServiceRegistry::new());
         services.register(Arc::new(AppContext::new("test-connection")));

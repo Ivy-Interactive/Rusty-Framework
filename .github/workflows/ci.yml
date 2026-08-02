@@ -17,7 +17,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # fetch-depth: 0 - Test inventory extracts the base commit with `git archive`,
+      # which fails with "not a valid object name" on the default shallow clone.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -32,6 +36,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: cargo test --workspace
 
+      - name: Test inventory
+        if: ${{ !cancelled() }}
+        env:
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          case "${BASE_REF:-}" in
+            ''|0000000000000000000000000000000000000000)
+              echo "No base commit for a ${{ github.event_name }} event - nothing to compare against."
+              exit 0 ;;
+          esac
+          sh ./scripts/check-test-inventory.sh "$BASE_REF"
+
       - name: Clippy
         if: ${{ !cancelled() }}
         run: cargo clippy --workspace --all-targets -- -D warnings
@@ -43,6 +59,10 @@ jobs:
       - name: Pre-commit hook harness
         if: ${{ !cancelled() }}
         run: sh ./scripts/test-precommit-hook.sh
+
+      - name: Test-inventory gate harness
+        if: ${{ !cancelled() }}
+        run: sh ./scripts/test-check-test-inventory.sh
 
   alert-on-red-main:
     needs: [build, frontend, renovate-liveness, e2e]

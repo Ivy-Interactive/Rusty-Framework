@@ -1,0 +1,5 @@
+error: `Trigger` has 1 `#[event]` field(s) but no `#[prop]` fields and no `id`, so `to_json` emits only its type and `has<Event>` flags — the client receives no data and the handlers can never be addressed. Add `#[prop]` to the fields the client needs, or an `id: Option<String>` field.
+ --> tests/ui/derive_event_only_struct.rs:7:8
+  |
+7 | struct Trigger {
+  |        ^^^^^^^

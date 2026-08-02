@@ -1,0 +1,5 @@
+error: `use_state` is called inside an `if` branch; hooks are keyed by call order, so a conditional call shifts every later hook's slot. Hoist it to the top level of `build`. Silence this rule for the whole impl block with `#[rusty::view(allow(conditional_hooks))]`.
+  --> tests/ui/hook_in_if.rs:14:25
+   |
+14 |             let extra = use_state(ctx, 0i32);
+   |                         ^^^^^^^^^

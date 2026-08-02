@@ -9,6 +9,15 @@ description = "Proc macros for Rusty-Framework widgets"
 proc-macro = true
 
 [dependencies]
-syn = { version = "2", features = ["full"] }
+syn = { version = "2", features = ["full", "visit", "extra-traits"] }
 quote = "1"
 proc-macro2 = "1"
+
+# `rusty` depends on `rusty-macros`, so this is a dev-dependency cycle. Cargo
+# permits it — dev-dependencies are not part of the library's own graph — and it
+# is what lets the `tests/ui` fixtures exercise the real hook API that the
+# `#[rusty::view]` rules are written against.
+[dev-dependencies]
+rusty = { path = "../rusty" }
+tokio = { workspace = true }
+trybuild = "1.0.118"

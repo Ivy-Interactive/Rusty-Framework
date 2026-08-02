@@ -88,6 +88,10 @@ impl<T: Send + Sync + Clone + 'static> Clone for State<T> {
 ///
 /// On first call, initializes with `initial`. On subsequent builds, returns
 /// the persisted state from the HookStore (mutations are preserved).
+#[expect(
+    clippy::disallowed_methods,
+    reason = "this *is* a hook implementation; `clippy.toml` forbids the slot machinery to view code"
+)]
 pub fn use_state<T: Send + Sync + Clone + 'static>(ctx: &mut BuildContext, initial: T) -> State<T> {
     let idx = ctx.next_hook_index();
     let rebuild_info = ctx.rebuild_sender();
