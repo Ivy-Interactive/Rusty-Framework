@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 pub struct Skeleton {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    #[prop(with = "crate::shared::size_css")]
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub width: Option<Size>,
-    #[prop(with = "crate::shared::size_css")]
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub height: Option<Size>,
 }
