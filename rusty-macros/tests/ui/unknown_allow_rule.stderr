@@ -1,0 +1,5 @@
+error: unknown `rusty::view` rule `conditional_hook`; expected `conditional_hooks` or `set_during_build`
+ --> tests/ui/unknown_allow_rule.rs:6:21
+  |
+6 | #[rusty::view(allow(conditional_hook))]
+  |                     ^^^^^^^^^^^^^^^^

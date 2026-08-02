@@ -127,6 +127,10 @@ impl Default for HookStore {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "these tests address hook slots by number on purpose — that is the unit under test"
+)]
 mod tests {
     use super::*;
     use std::sync::Mutex;

@@ -98,6 +98,10 @@ impl Runtime {
     }
 
     /// Build a specific view (or root if None).
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the rebuild loop owns the hook index; `clippy.toml` forbids `reset` to view code"
+    )]
     async fn build_view(&mut self, target_view_id: Option<ViewId>) -> Element {
         let view_id = target_view_id.unwrap_or_else(|| self.view_tree.root_id());
 

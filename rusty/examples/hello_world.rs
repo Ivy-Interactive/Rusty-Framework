@@ -2,6 +2,7 @@ use rusty::prelude::*;
 
 struct HelloApp;
 
+#[rusty::view]
 impl View for HelloApp {
     fn build(&self, _ctx: &mut BuildContext) -> Element {
         Layout::vertical()

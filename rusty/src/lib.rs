@@ -29,3 +29,11 @@ pub mod prelude {
 
 // Re-export the derive macro
 pub use rusty_macros::Widget;
+
+/// Re-export of the hook-invariant attribute macro, so it reads as
+/// `#[rusty::view]` on an `impl View for X` block.
+///
+/// It checks `fn build` for conditional hook calls and for `State::set` /
+/// `State::update` during build, and never alters the code it annotates. See
+/// [`rusty_macros::view`] for the rules and the `allow(..)` escape hatch.
+pub use rusty_macros::view;

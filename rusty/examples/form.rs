@@ -7,6 +7,7 @@ use rusty::widgets::input::SelectOption;
 
 struct FormApp;
 
+#[rusty::view]
 impl View for FormApp {
     fn build(&self, ctx: &mut BuildContext) -> Element {
         let name = use_state(ctx, String::new());
