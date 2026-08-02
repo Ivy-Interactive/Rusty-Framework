@@ -7,10 +7,28 @@ Rusty-Framework uses a hybrid Rust/Node frontend stack. Always verify both sides
 Rust, from the repo root:
 
 ```sh
-cargo build --workspace
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
+cargo build --workspace --no-default-features
+cargo test --workspace --no-default-features
+cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 cargo fmt --all -- --check
+```
+
+**`--no-default-features` is what CI runs, so it is what to verify against.** It
+turns off `rusty-desktop`'s default `shell` feature and with it `wry`/`tao`/`muda`.
+On Linux those resolve `webkit2gtk-sys`, `javascriptcore-rs`, `gtk` and `soup3`,
+which need `libwebkit2gtk-4.1-dev` — a package `ubuntu-latest` does not ship, so
+the plain `--workspace` commands cannot build there at all. Every other workspace
+crate is feature-free, so the flag costs no coverage outside `rusty-desktop`.
+`cargo fmt` takes no such flag and needs none: rustfmt parses without resolving
+features, so it always covers the gated files.
+
+On a desktop machine, also build the shell itself — this is the only thing that
+compiles `src/shell.rs` and `src/main.rs`:
+
+```sh
+cargo build -p rusty-desktop
+cargo clippy -p rusty-desktop --all-targets -- -D warnings
+cargo run -p rusty-desktop            # opens a native window
 ```
 
 Frontend, from `src/frontend` (there is no root `package.json`):
@@ -156,12 +174,40 @@ one.
 
 Git hooks are husky (`.husky/pre-commit` + `package.json`'s `lint-staged`). Vite+'s `vp staged` / `staged` config is intentionally unused — do not run `vp config`, which would install a competing `.vite-hooks` tree.
 
+## E2E (e2e)
+
+`e2e/` is a separate **npm** project (it has `package-lock.json` and no `packageManager` — do not
+reach for pnpm here) driving the `target/debug/widget_harness` binary through Playwright. It is the
+Rust widgets' only real client: a new widget is invisible to it until it has a `case` arm in
+`e2e/app/index.html` **and** an `*App` + `match` arm in `rusty-server/src/bin/widget_harness.rs`.
+
+CI runs it as the `e2e` job, whose first step is `node scripts/check-harness-script.js` — it
+extracts the file's single inline `<script>` and `node --check`s it, before building or installing
+anything. **Run that script yourself after resolving any conflict in `e2e/app/index.html`.** The file
+has been left unparseable twice by hand-resolved merge conflicts (`7b7e981`, `0939697`), each time
+silently zeroing the entire suite: `document.querySelectorAll('[data-widget-type]')` returns nothing
+and every spec dies in `waitForSelector`, pointing at no cause. `npx playwright test --list` exits 0
+on a broken file, because the Playwright loader never looks at the HTML.
+
+Three gates cover this file, and each sees something the others miss. `cargo test`'s
+`harness_client_is_loadable` checks structure — script tag count, brace balance, duplicate case
+labels — without a browser or a Playwright install. `node --check` catches what balances but does not
+parse: the stray `break;` at `0939697` left braces even and labels unique, so structure alone reports
+it clean. And only running the suite catches logic that parses *and* balances but is wrong —
+`206886a` reverted plan 00080's `avatar` `data-size` fix two minutes after it landed, and no static
+check can see that. Do not treat any one of the three as covering for the others.
+
+Locally: `cargo build -p rusty-server --bin widget_harness`, then from `e2e/`, `npm ci`,
+`npx playwright install chromium`, `npx playwright test`. A stale harness binary reports
+`Unknown widget: <name>`, which is easy to mistake for a code fault.
+
 ## CI
 
 `.github/workflows/ci.yml` runs build, test, clippy, `cargo fmt --all -- --check`,
-a test-inventory check (see below), frontend checks, and renovate-liveness on every
-push to `main` and every PR. All checks
-report independently — a failure in one does not skip the rest. When any of those jobs fails on a push to `main`, `alert-on-red-main` opens or comments on a `ci-red` issue - it depends on all of them, so no job's failure is silent. A weekly `cargo-majors` job (`schedule`, plus `workflow_dispatch`) reports Cargo dependencies whose latest stable release is outside the major series declared in the manifests. It is report-only. This exists because `renovate.json` parks all cargo updates, and Renovate omits parked dependencies from the Dependency Dashboard entirely - a parked major is invisible, not a checkbox. As of 2026-08-02: `syn` `^2` -> 3.0.3, `tower-http` `^0.6` -> 0.7.0, `tokio-tungstenite` `^0.29` -> 0.30.0.
+`.github/workflows/ci.yml` runs build, test, clippy, `cargo fmt --all -- --check`,
+a test-inventory check (see below), frontend checks, the `e2e` Playwright suite, and renovate-liveness on every
+push to `main` and every PR. All checks report independently — a failure in one does not skip the rest.
+`build`, `frontend`, `e2e` and `renovate-liveness` are separate jobs, not steps of one. When any of those jobs fails on a push to `main`, `alert-on-red-main` opens or comments on a `ci-red` issue - it depends on all of them, so no job's failure is silent. A weekly `cargo-majors` job (`schedule`, plus `workflow_dispatch`) reports Cargo dependencies whose latest stable release is outside the major series declared in the manifests. It is report-only. This exists because `renovate.json` parks all cargo updates, and Renovate omits parked dependencies from the Dependency Dashboard entirely - a parked major is invisible, not a checkbox. As of 2026-08-02: `syn` `^2` -> 3.0.3, `tower-http` `^0.6` -> 0.7.0, `tokio-tungstenite` `^0.29` -> 0.30.0.
 
 `main` has no branch protection and no rulesets:
 
@@ -216,6 +262,39 @@ Two things it needs, both of which fail silently if you drop them:
 never inspected.
 
 `cargo test --workspace` now asserts `e2e/app/index.html` is structurally loadable (matching script tag count, brace balance, no duplicate case labels), which catches breakages a `pageerror`-only check misses — a duplicated `</script>` throws no pageerror yet renders half the code as page text.
+
+### rusty-desktop and the two Rust jobs
+
+The `build` job (`ubuntu-latest`) passes `--no-default-features` to build, test and
+clippy — see "Verify" for why. The `desktop-shell` job (`windows-latest`) is the
+only one that compiles the `shell` feature; Windows needs no dev packages because
+the WebView is the OS's own WebView2. It is also the only gate on
+`rusty-desktop/src/main.rs`, which declares `required-features = ["shell"]` and is
+therefore skipped entirely by the `build` job — a compile error there is invisible
+to Ubuntu. Both were checked non-inert by injecting a `clone_on_copy` warning:
+`desktop-shell` clippy exits 101 for one in either `shell.rs` or `main.rs`, while
+the `--no-default-features` workspace clippy exits 0 on the same code.
+
+**`wry`, `tao` and `muda` must stay `optional = true` and must stay out of
+`[features] default` for any crate CI builds on Linux.** Adding one as a plain
+dependency, or feeding one into a default feature of `rusty`/`rusty-server`, turns
+the `build` job red with a `pkg-config` failure that names WebKit rather than the
+commit that caused it. To check what a change resolves on the runner's platform
+without pushing:
+
+```sh
+cargo tree -p rusty-desktop --target x86_64-unknown-linux-gnu | grep webkit2gtk
+cargo tree -p rusty-desktop --no-default-features --target x86_64-unknown-linux-gnu | grep webkit2gtk
+```
+
+The first prints `webkit2gtk-sys v2.0.2`; the second must print nothing.
+
+Testability is why the menu lives in `rusty-desktop/src/menu.rs` as a pure
+`&str -> MenuAction` mapping rather than in the event loop: `tao` panics if an
+event loop is built off the main thread, so no `#[test]` can construct one, and
+`muda::MenuEvent::send` is `pub(crate)`, so no test can synthesize a click. Keep
+menu logic in `menu.rs`, where it is covered, and keep `shell.rs` a shim thin
+enough that reading it is the review.
 
 ### Probing renovate.json
 

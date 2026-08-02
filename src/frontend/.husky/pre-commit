@@ -12,11 +12,13 @@ if [ -n "$CONFLICT_FILES" ]; then
 fi
 
 # Format staged Rust files. See scripts/precommit-rust-fmt.sh.
+# The -e is load-bearing: a nested sh does not inherit it from husky's `sh -e`
+# wrapper, so without it any failure the helper does not explicitly check is
+# discarded and the commit proceeds.
 # The [ -f ] guard keeps commits working on checkouts that predate the script
 # (bisect, or an older branch), where an unguarded call exits 127.
-# `|| exit 1` propagates the failure when the hook is run without `sh -e`.
 if [ -f ./scripts/precommit-rust-fmt.sh ]; then
-  sh ./scripts/precommit-rust-fmt.sh || exit 1
+  sh -e ./scripts/precommit-rust-fmt.sh
 fi
 
 # Compile-class gates for merge resolutions (no-op for ordinary commits).
