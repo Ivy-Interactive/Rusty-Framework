@@ -1,17 +1,21 @@
-use crate::core::event_registry::EventRegistry;
-use crate::views::view::{Element, WidgetData};
+use crate::views::view::Element;
+use rusty_macros::Widget;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::sync::Arc;
 
 /// A collapsible section with a clickable header.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Widget)]
 pub struct Expandable {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    #[prop]
     pub title: String,
+    #[prop]
     pub expanded: bool,
+    #[prop]
+    #[children]
     pub children: Vec<Element>,
+    #[event(arg = "value")]
     #[serde(skip)]
     pub on_toggle: Option<Arc<dyn Fn(bool) + Send + Sync>>,
 }
@@ -61,56 +65,6 @@ impl Expandable {
     }
 }
 
-impl WidgetData for Expandable {
-    fn widget_type(&self) -> &str {
-        "expandable"
-    }
-
-    fn to_json(&self) -> serde_json::Value {
-        json!({
-            "type": "expandable",
-            "id": self.id,
-            "title": self.title,
-            "expanded": self.expanded,
-            "children": self.children.iter()
-                .map(|c| serde_json::to_value(c).unwrap_or_default())
-                .collect::<Vec<_>>(),
-            "hasOnToggle": self.on_toggle.is_some(),
-        })
-    }
-
-    fn clone_box(&self) -> Box<dyn WidgetData> {
-        Box::new(self.clone())
-    }
-
-    fn assign_id(&mut self, id: String) {
-        self.id = Some(id);
-    }
-
-    fn get_id(&self) -> Option<&str> {
-        self.id.as_deref()
-    }
-
-    fn register_events(&self, widget_id: &str, registry: &mut EventRegistry) {
-        if let Some(handler) = &self.on_toggle {
-            let handler = handler.clone();
-            registry.register(
-                widget_id,
-                "toggle",
-                Arc::new(move |args| {
-                    if let Some(value) = args.get("value").and_then(|v| v.as_bool()) {
-                        handler(value);
-                    }
-                }),
-            );
-        }
-    }
-
-    fn children_mut(&mut self) -> Option<&mut Vec<Element>> {
-        Some(&mut self.children)
-    }
-}
-
 impl From<Expandable> for Element {
     fn from(expandable: Expandable) -> Self {
         expandable.into_element()
@@ -121,8 +75,9 @@ impl From<Expandable> for Element {
 mod tests {
     use super::*;
     use crate::hooks::hook_store::HookStore;
-    use crate::views::view::BuildContext;
+    use crate::views::view::{BuildContext, WidgetData};
     use crate::widgets::text::TextBlock;
+    use serde_json::json;
     use std::sync::Mutex;
 
     #[test]
