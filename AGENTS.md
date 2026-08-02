@@ -126,7 +126,7 @@ repo, so `renovate.json` is a declaration of intent. CI's `renovate-liveness`
 job fails once the config is 14 days old with no Renovate issue or PR: either
 install https://github.com/apps/renovate or delete `renovate.json`. Do not
 leave it as decoration — `Ivy-Web/.github/renovate.json` has sat inert since a
-2024-03 `create-turbo` scaffold and has never opened a single PR. To check what `renovate.json` would actually do, see "Probing renovate.json" under `## CI` - the dry-run needs `GITHUB_COM_TOKEN` or it silently reports no GitHub Actions updates.
+2024-03 `create-turbo` scaffold and has never opened a single PR. To check what `renovate.json` would actually do, see "Probing renovate.json" under `## CI` - the dry-run needs `GITHUB_COM_TOKEN` or it silently reports no GitHub Actions updates. To check what is actually installed, use `pnpm ls <pkg>`, not `ls node_modules/.pnpm` — `.pnpm` retains superseded generations, so that listing shows stale versions even on a correct tree. Clear them with `pnpm prune --ignore-scripts`, not `pnpm store prune`, which only touches the global store.
 
 
 To verify which version is actually linked in `node_modules` (not a globally
