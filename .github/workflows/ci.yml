@@ -29,12 +29,16 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # --no-default-features drops rusty-desktop's `shell` feature, and with it wry/tao/
+      # muda. Those pull webkit2gtk-sys, which needs libwebkit2gtk-4.1-dev - not installed
+      # on ubuntu-latest. Everything except rusty-desktop is feature-free, so this loses no
+      # coverage here; the GUI shim is compiled by the `desktop-shell` job instead.
       - name: Build
-        run: cargo build --workspace
+        run: cargo build --workspace --no-default-features
 
       - name: Test
         if: ${{ !cancelled() }}
-        run: cargo test --workspace
+        run: cargo test --workspace --no-default-features
 
       - name: Test inventory
         if: ${{ !cancelled() }}
@@ -50,8 +54,9 @@ jobs:
 
       - name: Clippy
         if: ${{ !cancelled() }}
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 
+      # rustfmt parses; it never resolves features, so this still covers shell.rs.
       - name: Format check
         if: ${{ !cancelled() }}
         run: cargo fmt --all -- --check
@@ -64,9 +69,35 @@ jobs:
         if: ${{ !cancelled() }}
         run: sh ./scripts/test-check-test-inventory.sh
 
+  desktop-shell:
+    # The one job that compiles rusty-desktop's `shell` feature. It runs on Windows because
+    # the WebView there is the OS's own WebView2 - no dev packages to install, unlike the
+    # libwebkit2gtk-4.1-dev that keeps wry/tao/muda out of the `build` job.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Default features, so this is the gate on shell.rs and on src/main.rs, which is
+      # required-features = ["shell"] and therefore invisible to the `build` job.
+      - name: Build
+        run: cargo build -p rusty-desktop
+
+      - name: Clippy
+        if: ${{ !cancelled() }}
+        run: cargo clippy -p rusty-desktop --all-targets -- -D warnings
+
   alert-on-red-main:
-    needs: [build, frontend, renovate-liveness, e2e]
+    needs: [build, frontend, renovate-liveness, e2e, desktop-shell]
     if: ${{ failure() && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
     runs-on: ubuntu-latest
     permissions:
       issues: write
