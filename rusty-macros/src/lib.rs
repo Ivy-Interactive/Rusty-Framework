@@ -5,7 +5,6 @@ use syn::{parse_macro_input, Attribute, DeriveInput, Field, Ident, ItemImpl};
 mod hook_rules;
 mod widget_checks;
 
-
 /// Derive macro for the `WidgetData` trait.
 ///
 /// Generates `widget_type()`, `to_json()`, `clone_box()`, `assign_id()`,
