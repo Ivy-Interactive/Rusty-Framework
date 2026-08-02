@@ -72,6 +72,10 @@ impl<'de> Deserialize<'de> for Size {
     }
 }
 
+/// Render an optional [`Size`] as its CSS string, for `#[prop(with = ...)]`.
+///
+/// `Size`'s derived `Serialize` is `untagged` and therefore lossy on the wire
+
 /// Density level for widget rendering.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

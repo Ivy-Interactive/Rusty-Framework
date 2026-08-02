@@ -1,5 +1,5 @@
 [workspace]
-members = ["rusty", "rusty-macros", "rusty-server", "rusty-docs"]
+members = ["rusty", "rusty-macros", "rusty-server", "rusty-docs", "rusty-desktop"]
 resolver = "2"
 
 [workspace.package]

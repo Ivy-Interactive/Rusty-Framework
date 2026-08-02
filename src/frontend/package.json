@@ -137,12 +137,12 @@
     "vitest": "4.1.10"
   },
   "lint-staged": {
-    "src/**/*.{js,jsx,ts,tsx}": [
+    "**/*.{js,jsx,mjs,cjs,ts,tsx}": [
       "vp lint --fix --max-warnings=0",
-      "vp fmt"
+      "vp fmt --no-error-on-unmatched-pattern"
     ],
-    "*.{json,css,md,html}": [
-      "vp fmt"
+    "**/*.{css,json,md,html}": [
+      "vp fmt --no-error-on-unmatched-pattern"
     ]
   },
   "packageManager": "pnpm@10.33.0",

@@ -1,15 +1,16 @@
-use crate::core::event_registry::EventRegistry;
 use crate::shared::Icon;
-use crate::views::view::{Element, WidgetData};
+use crate::views::view::Element;
+use rusty_macros::Widget;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::sync::Arc;
 
 /// A vertical list of [`ListItem`]s (or any other elements).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Widget)]
 pub struct List {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    #[prop]
+    #[children]
     pub items: Vec<Element>,
 }
 
@@ -33,38 +34,6 @@ impl List {
     }
 }
 
-impl WidgetData for List {
-    fn widget_type(&self) -> &str {
-        "list"
-    }
-
-    fn to_json(&self) -> serde_json::Value {
-        json!({
-            "type": "list",
-            "id": self.id,
-            "items": self.items.iter()
-                .map(|c| serde_json::to_value(c).unwrap_or_default())
-                .collect::<Vec<_>>(),
-        })
-    }
-
-    fn clone_box(&self) -> Box<dyn WidgetData> {
-        Box::new(self.clone())
-    }
-
-    fn assign_id(&mut self, id: String) {
-        self.id = Some(id);
-    }
-
-    fn get_id(&self) -> Option<&str> {
-        self.id.as_deref()
-    }
-
-    fn children_mut(&mut self) -> Option<&mut Vec<Element>> {
-        Some(&mut self.items)
-    }
-}
-
 impl From<List> for Element {
     fn from(list: List) -> Self {
         list.into_element()
@@ -72,15 +41,19 @@ impl From<List> for Element {
 }
 
 /// A single row within a [`List`].
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Widget)]
 pub struct ListItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    #[prop]
     pub title: String,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subtitle: Option<String>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<Icon>,
+    #[event]
     #[serde(skip)]
     pub on_click: Option<Arc<dyn Fn() + Send + Sync>>,
 }
@@ -125,48 +98,6 @@ impl ListItem {
     }
 }
 
-impl WidgetData for ListItem {
-    fn widget_type(&self) -> &str {
-        "list_item"
-    }
-
-    fn to_json(&self) -> serde_json::Value {
-        json!({
-            "type": "list_item",
-            "id": self.id,
-            "title": self.title,
-            "subtitle": self.subtitle,
-            "icon": self.icon.as_ref().map(|i| i.0.clone()),
-            "hasOnClick": self.on_click.is_some(),
-        })
-    }
-
-    fn clone_box(&self) -> Box<dyn WidgetData> {
-        Box::new(self.clone())
-    }
-
-    fn assign_id(&mut self, id: String) {
-        self.id = Some(id);
-    }
-
-    fn get_id(&self) -> Option<&str> {
-        self.id.as_deref()
-    }
-
-    fn register_events(&self, widget_id: &str, registry: &mut EventRegistry) {
-        if let Some(handler) = &self.on_click {
-            let handler = handler.clone();
-            registry.register(
-                widget_id,
-                "click",
-                Arc::new(move |_args| {
-                    handler();
-                }),
-            );
-        }
-    }
-}
-
 impl From<ListItem> for Element {
     fn from(item: ListItem) -> Self {
         item.into_element()
@@ -177,7 +108,7 @@ impl From<ListItem> for Element {
 mod tests {
     use super::*;
     use crate::hooks::hook_store::HookStore;
-    use crate::views::view::BuildContext;
+    use crate::views::view::{BuildContext, WidgetData};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
