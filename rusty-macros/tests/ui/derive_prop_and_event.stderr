@@ -1,0 +1,5 @@
+error: `on_click` carries both `#[prop]` and `#[event]`. `#[prop]` serializes the field and an event callback is not serializable — pick one.
+  --> tests/ui/derive_prop_and_event.rs:10:5
+   |
+10 |     #[prop]
+   |     ^

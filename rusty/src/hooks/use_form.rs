@@ -50,6 +50,10 @@ pub fn use_form<M: Clone + Send + Sync + 'static>(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "these tests assert on hook slot indices on purpose — that is what use_form guarantees"
+)]
 mod tests {
     use super::*;
     use crate::hooks::hook_store::HookStore;

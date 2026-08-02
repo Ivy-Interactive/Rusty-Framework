@@ -10,6 +10,7 @@ use std::time::Duration;
 
 struct HooksApp;
 
+#[rusty::view]
 impl View for HooksApp {
     fn build(&self, ctx: &mut BuildContext) -> Element {
         // use_state takes the initial *value*, not a closure.

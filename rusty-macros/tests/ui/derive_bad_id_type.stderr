@@ -1,0 +1,5 @@
+error: the `id` field must be `Option<String>`; the derive generates `self.id = Some(id)` and `self.id.as_deref()`, which `String` does not support.
+ --> tests/ui/derive_bad_id_type.rs:7:9
+  |
+7 |     id: String,
+  |         ^^^^^^

@@ -344,6 +344,10 @@ impl<'a> BuildContext<'a> {
     /// The child's HookStore is persisted inside the parent's store under the
     /// child's ViewId, so hook state and effect cleanups survive re-renders
     /// without the caller threading a store back in.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a child view starts its own slot sequence; `clippy.toml` forbids `reset` to view code"
+    )]
     pub fn child_view(&mut self, view: impl View) -> (Element, ViewId) {
         let child_index = self.child_views.len();
         let child_view_id = self.child_view_id(child_index);
