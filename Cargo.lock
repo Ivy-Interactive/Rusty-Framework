@@ -2107,6 +2107,7 @@ dependencies = [
  "bytes",
  "futures",
  "rusty-filter",
+ "rusty-ivyml",
  "rusty-macros",
  "serde",
  "serde_json",
@@ -2149,6 +2150,15 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "rusty-ivyml"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]

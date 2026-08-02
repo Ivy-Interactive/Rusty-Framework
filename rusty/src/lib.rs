@@ -45,3 +45,7 @@ pub use rusty_macros::Widget;
 /// `State::update` during build, and never alters the code it annotates. See
 /// [`rusty_macros::view`] for the rules and the `allow(..)` escape hatch.
 pub use rusty_macros::view;
+
+// Re-export the markup macros. Deliberately not in `prelude`: a glob-imported
+// `ivyml!` reads as a locally defined macro, and the prelude exports only types.
+pub use rusty_ivyml::{ivyml, ivyml_file};

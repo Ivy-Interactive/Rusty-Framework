@@ -17,6 +17,7 @@ tower-http.workspace = true
 bytes.workspace = true
 rusty-macros = { path = "../rusty-macros" }
 rusty-filter = { path = "../rusty-filter" }
+rusty-ivyml = { path = "../rusty-ivyml" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
