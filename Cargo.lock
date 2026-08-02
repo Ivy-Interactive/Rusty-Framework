@@ -2106,6 +2106,7 @@ dependencies = [
  "axum",
  "bytes",
  "futures",
+ "rusty-ivyml",
  "rusty-macros",
  "serde",
  "serde_json",
@@ -2140,6 +2141,15 @@ dependencies = [
  "rusty",
  "tokio",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "rusty-ivyml"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]

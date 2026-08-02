@@ -5,7 +5,6 @@ use syn::{parse_macro_input, Attribute, DeriveInput, Field, Ident, ItemImpl};
 mod hook_rules;
 mod widget_checks;
 
-
 /// Derive macro for the `WidgetData` trait.
 ///
 /// Generates `widget_type()`, `to_json()`, `clone_box()`, `assign_id()`,
@@ -112,21 +111,17 @@ fn expand_widget(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
         .filter(|f| f.attrs.iter().any(|a| a.path().is_ident("prop")))
         .collect();
 
-    let event_specs: Vec<EventSpec> = match fields
+    let event_specs: Vec<EventSpec> = fields
         .iter()
         .filter(|f| has_attr(f, "event"))
         .map(EventSpec::parse)
-        .collect()
-    {
-        Ok(specs) => specs,
-        Err(err) => return Err(err),
-    };
+        .collect::<syn::Result<_>>()?;
 
     let has_id_field = fields
         .iter()
         .any(|f| f.ident.as_ref().is_some_and(|i| i == "id"));
 
-    let json_fields: Vec<_> = match prop_fields
+    let json_fields: Vec<_> = prop_fields
         .iter()
         .map(|f| {
             let field_name = f.ident.as_ref().unwrap();
@@ -139,11 +134,7 @@ fn expand_widget(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                 map.insert(#json_key.to_string(), serde_json::to_value(#value).unwrap_or_default());
             })
         })
-        .collect::<syn::Result<Vec<_>>>()
-    {
-        Ok(fields) => fields,
-        Err(err) => return Err(err),
-    };
+        .collect::<syn::Result<Vec<_>>>()?;
 
     // Generate "has<EventName>" boolean entries for event fields
     let event_has_fields: Vec<_> = event_specs
