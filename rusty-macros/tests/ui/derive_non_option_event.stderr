@@ -1,0 +1,5 @@
+error: `#[event]` field `on_click` must be an `Option<..>`; the derive emits `self.on_click.is_some()` to report the handler's presence. Wrap the type: `Option<Arc<dyn Fn() + Send + Sync>>`.
+  --> tests/ui/derive_non_option_event.rs:12:15
+   |
+12 |     on_click: Arc<dyn Fn() + Send + Sync>,
+   |               ^^^

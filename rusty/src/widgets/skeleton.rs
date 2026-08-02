@@ -1,15 +1,17 @@
 use crate::shared::Size;
-use crate::views::view::{Element, WidgetData};
+use crate::views::view::Element;
+use rusty_macros::Widget;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 /// A placeholder block shown while content loads.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Widget)]
 pub struct Skeleton {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    #[prop(with = "crate::shared::size_css")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub width: Option<Size>,
+    #[prop(with = "crate::shared::size_css")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub height: Option<Size>,
 }
@@ -34,33 +36,6 @@ impl Skeleton {
     }
 }
 
-impl WidgetData for Skeleton {
-    fn widget_type(&self) -> &str {
-        "skeleton"
-    }
-
-    fn to_json(&self) -> serde_json::Value {
-        json!({
-            "type": "skeleton",
-            "id": self.id,
-            "width": self.width.as_ref().map(Size::to_css),
-            "height": self.height.as_ref().map(Size::to_css),
-        })
-    }
-
-    fn clone_box(&self) -> Box<dyn WidgetData> {
-        Box::new(self.clone())
-    }
-
-    fn assign_id(&mut self, id: String) {
-        self.id = Some(id);
-    }
-
-    fn get_id(&self) -> Option<&str> {
-        self.id.as_deref()
-    }
-}
-
 impl From<Skeleton> for Element {
     fn from(skeleton: Skeleton) -> Self {
         skeleton.into_element()
@@ -70,6 +45,7 @@ impl From<Skeleton> for Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::views::view::WidgetData;
 
     #[test]
     fn test_skeleton_builder() {

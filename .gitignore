@@ -5,6 +5,9 @@
 /rusty-docs/target
 /rusty-docs/src/generated/
 
+# trybuild writes a rejected .stderr snapshot here while you review it
+/rusty-macros/wip/
+
 # Frontend
 src/frontend/node_modules/
 src/frontend/dist/

@@ -1,20 +1,25 @@
 use crate::shared::{Color, Icon};
-use crate::views::view::{Element, WidgetData};
+use crate::views::view::Element;
+use rusty_macros::Widget;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 /// A renderable icon.
 ///
 /// Named `IconWidget` rather than `Icon` to avoid colliding with
 /// [`crate::shared::Icon`], the value type already in the prelude, which this
-/// widget wraps.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// widget wraps. The wire name stays `"icon"` — that is what the frontend
+/// registry keys on — hence the `#[widget(type = ...)]` override.
+#[derive(Debug, Clone, Serialize, Deserialize, Widget)]
+#[widget(type = "icon")]
 pub struct IconWidget {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    #[prop]
     pub name: Icon,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<f64>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<Color>,
 }
@@ -44,34 +49,6 @@ impl IconWidget {
     }
 }
 
-impl WidgetData for IconWidget {
-    fn widget_type(&self) -> &str {
-        "icon"
-    }
-
-    fn to_json(&self) -> serde_json::Value {
-        json!({
-            "type": "icon",
-            "id": self.id,
-            "name": self.name.0,
-            "size": self.size,
-            "color": self.color,
-        })
-    }
-
-    fn clone_box(&self) -> Box<dyn WidgetData> {
-        Box::new(self.clone())
-    }
-
-    fn assign_id(&mut self, id: String) {
-        self.id = Some(id);
-    }
-
-    fn get_id(&self) -> Option<&str> {
-        self.id.as_deref()
-    }
-}
-
 impl From<IconWidget> for Element {
     fn from(icon: IconWidget) -> Self {
         icon.into_element()
@@ -82,6 +59,7 @@ impl From<IconWidget> for Element {
 mod tests {
     use super::*;
     use crate::shared::NamedColor;
+    use crate::views::view::WidgetData;
 
     #[test]
     fn test_icon_widget_builder() {

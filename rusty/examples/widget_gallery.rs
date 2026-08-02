@@ -10,6 +10,7 @@ use rusty::widgets::table::Column;
 
 struct GalleryApp;
 
+#[rusty::view]
 impl View for GalleryApp {
     fn build(&self, _ctx: &mut BuildContext) -> Element {
         Layout::vertical()

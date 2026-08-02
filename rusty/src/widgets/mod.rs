@@ -6,6 +6,8 @@ pub mod callout;
 pub mod card;
 pub mod container;
 pub mod data_table;
+#[cfg(test)]
+mod derive_tests;
 pub mod dialog;
 pub mod diff_view;
 pub mod expandable;

@@ -151,9 +151,33 @@ check "exit" 1 "$RC"
 case "$OUT" in *conflict*) ;; *) echo "  FAIL [$CASE] no conflict message"; FAILURES=$((FAILURES + 1));; esac
 teardown
 
+echo "12. scripts/ absent (checkout predating the script) -> exit 0, not 127"
+# `setup` always copies scripts/, so this case removes it again: a checkout that
+# predates c5121ee has the hook but no script, and an unguarded `sh ./scripts/...`
+# makes every commit there fail with 127. 123 commits are in that range.
+setup "no-script"
+rm -rf ./scripts
+printf 'x\n' > a.txt; git add a.txt
+run
+check "exit" 0 "$RC"
+case "$OUT" in *"No such file"*) echo "  FAIL [$CASE] unguarded call: $OUT"; FAILURES=$((FAILURES + 1));; esac
+teardown
+
+echo "13. script failure blocks even without sh -e (|| exit 1 propagates)"
+# `run` uses `sh -e`, under which a bare call already propagates. A developer
+# invoking `sh .husky/pre-commit` by hand gets no -e, and there the exit status
+# of a non-final command is discarded unless the call says `|| exit 1`.
+setup "propagate-no-e"
+printf 'pub fn  a ( ) {}\n' > d.rs; git add d.rs
+printf 'pub fn  a ( ) {}\npub fn unreviewed() {}\n' > d.rs
+OUT=$(sh ./pre-commit 2>&1); RC=$?
+check "exit" 1 "$RC"
+check "index NOT swept" "pub fn  a ( ) {}" "$(git show :d.rs)"
+teardown
+
 echo ""
 if [ "$FAILURES" -eq 0 ]; then
-  echo "ALL 11 CASES PASS"
+  echo "ALL 13 CASES PASS"
   exit 0
 fi
 echo "FAILURES: $FAILURES"

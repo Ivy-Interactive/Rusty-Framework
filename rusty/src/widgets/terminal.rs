@@ -1,8 +1,7 @@
-use crate::core::event_registry::EventRegistry;
 use crate::shared::Color;
-use crate::views::view::{Element, WidgetData};
+use crate::views::view::Element;
+use rusty_macros::Widget;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::sync::Arc;
 
 /// How the terminal cursor is drawn.
@@ -28,33 +27,49 @@ pub struct TerminalSize {
 /// Ivy's `Stream` property (an `IWriteStream<byte[]>` for pushing output) is not
 /// ported — Rusty has no stream abstraction. Content is seeded through
 /// `initial_content` and updated by rebuilding the widget.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Widget)]
 pub struct Terminal {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cols: Option<u16>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rows: Option<u16>,
+    #[prop]
     pub cursor_blink: bool,
+    #[prop]
     pub cursor_style: CursorStyle,
+    #[prop]
     pub scrollback: u32,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub initial_content: Option<String>,
+    #[prop]
     pub closed: bool,
+    #[prop]
     pub allow_clipboard: bool,
+    #[prop]
     pub auto_focus: bool,
+    #[prop]
     pub loading: bool,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub loading_text: Option<String>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub background: Option<Color>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub foreground: Option<Color>,
+    #[event(arg = "data")]
     #[serde(skip)]
     pub on_input: Option<Arc<dyn Fn(String) + Send + Sync>>,
+    #[event(payload)]
     #[serde(skip)]
     pub on_resize: Option<Arc<dyn Fn(TerminalSize) + Send + Sync>>,
+    #[event(arg = "url")]
     #[serde(skip)]
     pub on_link_click: Option<Arc<dyn Fn(String) + Send + Sync>>,
 }
@@ -185,86 +200,6 @@ impl Default for Terminal {
     }
 }
 
-impl WidgetData for Terminal {
-    fn widget_type(&self) -> &str {
-        "terminal"
-    }
-
-    fn to_json(&self) -> serde_json::Value {
-        json!({
-            "type": "terminal",
-            "id": self.id,
-            "cols": self.cols,
-            "rows": self.rows,
-            "cursorBlink": self.cursor_blink,
-            "cursorStyle": self.cursor_style,
-            "scrollback": self.scrollback,
-            "initialContent": self.initial_content,
-            "closed": self.closed,
-            "allowClipboard": self.allow_clipboard,
-            "autoFocus": self.auto_focus,
-            "loading": self.loading,
-            "loadingText": self.loading_text,
-            "background": self.background,
-            "foreground": self.foreground,
-            "hasOnInput": self.on_input.is_some(),
-            "hasOnResize": self.on_resize.is_some(),
-            "hasOnLinkClick": self.on_link_click.is_some(),
-        })
-    }
-
-    fn clone_box(&self) -> Box<dyn WidgetData> {
-        Box::new(self.clone())
-    }
-
-    fn assign_id(&mut self, id: String) {
-        self.id = Some(id);
-    }
-
-    fn get_id(&self) -> Option<&str> {
-        self.id.as_deref()
-    }
-
-    fn register_events(&self, widget_id: &str, registry: &mut EventRegistry) {
-        if let Some(handler) = &self.on_input {
-            let handler = handler.clone();
-            registry.register(
-                widget_id,
-                "input",
-                Arc::new(move |args| {
-                    if let Some(data) = args.get("data").and_then(|v| v.as_str()) {
-                        handler(data.to_string());
-                    }
-                }),
-            );
-        }
-        if let Some(handler) = &self.on_resize {
-            let handler = handler.clone();
-            registry.register(
-                widget_id,
-                "resize",
-                Arc::new(move |args| {
-                    if let Ok(size) = serde_json::from_value::<TerminalSize>(args) {
-                        handler(size);
-                    }
-                }),
-            );
-        }
-        if let Some(handler) = &self.on_link_click {
-            let handler = handler.clone();
-            registry.register(
-                widget_id,
-                "linkclick",
-                Arc::new(move |args| {
-                    if let Some(url) = args.get("url").and_then(|v| v.as_str()) {
-                        handler(url.to_string());
-                    }
-                }),
-            );
-        }
-    }
-}
-
 impl From<Terminal> for Element {
     fn from(terminal: Terminal) -> Self {
         terminal.into_element()
@@ -275,7 +210,8 @@ impl From<Terminal> for Element {
 mod tests {
     use super::*;
     use crate::hooks::hook_store::HookStore;
-    use crate::views::view::BuildContext;
+    use crate::views::view::{BuildContext, WidgetData};
+    use serde_json::json;
     use std::sync::Mutex;
 
     #[test]

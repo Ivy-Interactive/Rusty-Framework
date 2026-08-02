@@ -132,6 +132,30 @@ vp lint --fix .
 - `vite.config.mjs` - Contains Vite+ syntax formatting and linting preferences
 - `package.json` - Contains execution scripts
 
+### Checking the Installed Toolchain Version
+
+To see which version of a package is actually in use, ask pnpm — do **not** list the store:
+
+```sh
+pnpm ls vite-plus     # -> vite-plus@0.2.7
+```
+
+`ls node_modules/.pnpm | grep vite-plus` is **not** a reliable diagnostic. `.pnpm` keeps every
+generation it has ever linked, so a freshly repaired tree still lists the stale one; only the
+symlink at `node_modules/vite-plus` reflects what actually resolves.
+
+Superseded generations are inert — nothing links them — but they make that listing misleading. To
+remove them:
+
+```sh
+pnpm prune --ignore-scripts
+```
+
+`--ignore-scripts` matters here: `pnpm prune` re-runs the `prepare` script, and this project's
+`prepare` is the husky installer, which rewrites `git config core.hooksPath` unconditionally.
+`pnpm store prune` is a **different** command — it cleans the global content-addressable store and
+leaves `node_modules/.pnpm` untouched.
+
 ## Module Graph and Lazy Loading
 
 Most widgets in `src/widgets/widgetMap.ts` are code-split with `lazyWithRetry(() => import("..."))`.
@@ -168,12 +192,6 @@ lazy one. Fix by splitting the eager exports into their own files, as `chat/` do
 `ChatMessageWidget.tsx`, `ChatLoadingWidget.tsx` and `ChatStatusWidget.tsx`. Once split, keep the
 lazy widget out of the barrel: `chat/index.ts` deliberately does not re-export `ChatWidget`.
 
-**3. Through a third-party barrel read as a record.** Reading a third-party barrel's exports object
-(like `icons` from `lucide-react`) prevents tree-shaking because the object access forces retention
-of all exports. Fix by extracting the dynamic lookup into its own module and loading it with
-`lazyWithRetry`, as `LucideIcon.tsx` does for the `icons` record. Named imports from the same package
-are free and can stay eager - `import { Folder } from "lucide-react"` tree-shakes correctly.
-
 Type-only references are free, in either direction. A `type` does not exist at runtime, so it creates
 no edge, which is why `ChatWidget.tsx` may safely import `ChatMessageWidgetProps` from the file it was
 split out of. Write it as `import type { ... }`: a plain `import` of a type-only binding is erased too
@@ -186,41 +204,36 @@ in fact does - `ChatWidget.tsx` imports `Button` and `ChatInput` that way.
 
 ### How to check
 
-**Do not rely on the build failing.** `vite.config.mjs` has an `assert-lazy-chunks` plugin that reads
-the module graph in `generateBundle` and checks that first-party dynamically imported modules do not
-land in statically-imported chunks. However, this gate does not catch all regression shapes: a barrel
-re-exporting a lazy widget can defeat the split with exit 0 and no warning. The byte budget check
-described below catches both classes.
+**The build will fail.** `vite.config.mjs` has an `assert-lazy-chunks` plugin that reads the module
+graph in `generateBundle` and fails the build if any first-party dynamically imported module lands in
+a chunk that is also statically imported, or if it is merged into the entry chunk (exit 1, with the
+source file and chunk name reported). This replaces an earlier plugin that promoted Rolldown's
+`INEFFECTIVE_DYNAMIC_IMPORT` warning: that warning is never emitted on `vite-plus` 0.2.7, so the old
+gate was silent while both known bug shapes built with exit 0. Reading the module graph works on the
+pinned version.
 
-**Chunk size is not a signal either.** The defeated chunk is still emitted at close to its normal size
-(13,952 bytes vs 13,925 correct), so the "69-byte facade" symptom described in older notes no longer
-appears.
+Chunk size is not a signal. The defeated chunk is still emitted at close to its normal size (13,952
+bytes vs 13,925 correct), so the "69-byte facade" symptom described in older notes no longer appears.
 
-Run the bundle budget check after building:
+To manually confirm a specific widget is lazy after `pnpm run build`:
 
 ```bash
 cd src/frontend
-pnpm run build && pnpm run check:bundle
+for w in ChatWidget ListWidget; do
+  c=$(ls dist/assets | grep -E "^${w}-[^-]*\.js$" | head -1)
+  grep -qF -e "import\"./$c" -e "from\"./$c" dist/assets/*.js &&
+    echo "EAGER (lazy loading defeated): $w [$c]"
+done
 ```
 
-This check walks static import edges from the entry chunk named in `dist/index.html` and fails if the
-total eager JS exceeds a byte budget (`MAX_EAGER_BYTES` in
-`scripts/check-eager-bundle.mjs`). Exit codes:
-
-- `0`: pass
-- `1`: over budget (the error message lists the largest chunks)
-- `2`: the check itself could not run (no `dist/`, or the modulepreload cross-check failed)
-
-A chunk is eager because a **static import edge** reaches it from the entry. To fix a budget failure,
-find the new edge and make it dynamic, or import a concrete module instead of a barrel that re-exports
-a lazy one. Re-partitioning with `manualChunks` does not help � it moves code between chunks without
-changing what is fetched. If the growth is intentional, raise `MAX_EAGER_BYTES` in the same commit and
-say why in the PR description.
-
-This check also runs in CI's `frontend` job, so regressions are caught before merge.
+Silence means the widget is genuinely lazy. The distinction is that a lazy edge is emitted as
+``import(`./ChatWidget-<hash>.js`)`` with backticks, whereas an eager one appears as a
+double-quoted `import"./ChatWidget-<hash>.js"` or `from"./ChatWidget-<hash>.js"`. Widen the `for`
+list to check other widgets; names that share a chunk with another widget have no chunk of their own
+and will simply not match.
 
 A cheaper guard for a barrel you have already fixed is a unit test asserting the barrel does not
-mention the lazy widget � see `src/widgets/lists/index.test.ts`. That catches a re-added `export`
+mention the lazy widget - see `src/widgets/lists/index.test.ts`. That catches a re-added `export`
 without a build, though only for the barrel it names.
 
 ### Barrels with no importers are inert
@@ -345,17 +358,16 @@ Tests are automatically run in GitHub Actions on push to main/master branches an
 
 ## Available Commands and Scripts
 
-| Command/Script        | Description                                    |
-| --------------------- | ---------------------------------------------- |
-| `vp dev`              | Start development server                       |
-| `vp run build`        | Build for production (typecheck + vp)          |
-| `vp run check:bundle` | Check the eager bundle against its byte budget |
-| `vp preview`          | Preview production build                       |
-| `vp test`             | Run unit tests with Vitest                     |
-| `vp run e2e`          | Run all end-to-end tests                       |
-| `vp run e2e:docs`     | Run Ivy.Docs end-to-end tests                  |
-| `vp run e2e:samples`  | Run Ivy.Samples end-to-end tests               |
-| `vp lint .`           | Check for linting issues                       |
-| `vp lint --fix .`     | Fix linting issues automatically               |
-| `vp fmt .`            | Format all files with Oxfmt                    |
-| `vp fmt --check .`    | Check if files are properly formatted          |
+| Command/Script       | Description                           |
+| -------------------- | ------------------------------------- |
+| `vp dev`             | Start development server              |
+| `vp run build`       | Build for production (typecheck + vp) |
+| `vp preview`         | Preview production build              |
+| `vp test`            | Run unit tests with Vitest            |
+| `vp run e2e`         | Run all end-to-end tests              |
+| `vp run e2e:docs`    | Run Ivy.Docs end-to-end tests         |
+| `vp run e2e:samples` | Run Ivy.Samples end-to-end tests      |
+| `vp lint .`          | Check for linting issues              |
+| `vp lint --fix .`    | Fix linting issues automatically      |
+| `vp fmt .`           | Format all files with Oxfmt           |
+| `vp fmt --check .`   | Check if files are properly formatted |

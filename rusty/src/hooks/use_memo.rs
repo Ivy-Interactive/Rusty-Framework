@@ -8,6 +8,10 @@ use crate::views::view::BuildContext;
 /// returns the cached value if `deps` haven't changed; recomputes otherwise.
 ///
 /// Mirrors Ivy-Framework's `UseMemo.cs` pattern.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "this *is* a hook implementation; `clippy.toml` forbids the slot machinery to view code"
+)]
 pub fn use_memo<T, F>(ctx: &mut BuildContext, deps: &[&dyn DynEq], compute: F) -> T
 where
     T: Send + Sync + Clone + 'static,
