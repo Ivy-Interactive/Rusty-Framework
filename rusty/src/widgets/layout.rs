@@ -36,10 +36,10 @@ pub struct Layout {
     #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub columns: Option<usize>,
-    #[prop(with = "crate::shared::size_css")]
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub width: Option<Size>,
-    #[prop(with = "crate::shared::size_css")]
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub height: Option<Size>,
     #[prop]

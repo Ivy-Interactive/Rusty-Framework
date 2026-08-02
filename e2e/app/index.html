@@ -103,17 +103,6 @@
       }
     };
 
-    // `Color` serializes untagged: a named colour or hex arrives as a string,
-    // an rgba arrives as `{r, g, b, a}`.
-    function cssColor(value) {
-      if (value == null) return null;
-      if (typeof value === 'string') return value;
-      if (typeof value === 'object' && value.r != null) {
-        return `rgba(${value.r}, ${value.g}, ${value.b}, ${value.a})`;
-      }
-      return String(value);
-    }
-
     function renderWidget(node) {
       if (!node || typeof node !== 'object') {
         return document.createTextNode(String(node || ''));
@@ -576,7 +565,7 @@
           if (node.padding != null) el.style.padding = node.padding + 'px';
           if (node.width) el.style.width = node.width;
           if (node.height) el.style.height = node.height;
-          const background = cssColor(node.background);
+          const background = node.background;
           if (background) {
             el.style.background = background;
             el.setAttribute('data-background', background);
@@ -594,7 +583,7 @@
             el.setAttribute('data-size', String(node.size));
             el.style.fontSize = node.size + 'px';
           }
-          const color = cssColor(node.color);
+          const color = node.color;
           if (color) {
             el.setAttribute('data-color', color);
             el.style.color = color;

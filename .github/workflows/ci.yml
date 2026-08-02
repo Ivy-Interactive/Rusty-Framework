@@ -167,6 +167,11 @@ jobs:
       - name: Format check
         run: pnpm format:check
 
+      - name: Pre-commit frontend branch
+        if: ${{ !cancelled() }}
+        working-directory: .
+        run: sh ./scripts/test-precommit-frontend.sh
+
   renovate-liveness:
     runs-on: ubuntu-latest
     permissions:
