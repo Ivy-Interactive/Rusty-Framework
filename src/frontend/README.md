@@ -210,11 +210,18 @@ in fact does - `ChatWidget.tsx` imports `Button` and `ChatInput` that way.
 
 ### How to check
 
-**Do not rely on the build failing.** `vite.config.mjs` has an `assert-lazy-chunks` plugin that reads
-the module graph in `generateBundle` and checks that first-party dynamically imported modules do not
-land in statically-imported chunks. However, this gate does not catch all regression shapes: a barrel
-re-exporting a lazy widget can defeat the split with exit 0 and no warning. The byte budget check
-described below catches both classes.
+**The build gate catches the barrel shape.** `vite.config.mjs` has an `assert-lazy-chunks` plugin that
+reads the module graph in `generateBundle` and fails the build if a first-party dynamically imported
+module lands in a statically-imported chunk. A barrel re-exporting a lazy widget is exactly that
+shape: appending `export * from "./ChatWidget"` to `chat/index.ts` makes `vp build` exit 1 from
+`[plugin assert-lazy-chunks]`, naming `src/widgets/chat/ChatWidget.tsx -> assets/ChatWidget-<hash>.js`
+and printing the sibling-vs-same-file fix advice.
+
+Its blind spot is a different shape: a lazy module merged into the **entry** chunk rather than into a
+statically-imported one, because the entry appears in no other chunk's import list. It is also blind
+to anything elided before the module graph is built, such as a named import whose binding is never
+used. The byte budget check described below is the independent measure that catches entry-chunk
+growth.
 
 **Chunk size is not a signal either.** The defeated chunk is still emitted at close to its normal size
 (13,952 bytes vs 13,925 correct), so the "69-byte facade" symptom described in older notes no longer
@@ -243,9 +250,11 @@ say why in the PR description.
 
 This check also runs in CI's `frontend` job, so regressions are caught before merge.
 
-A cheaper guard for a barrel you have already fixed is a unit test asserting the barrel does not
-mention the lazy widget � see `src/widgets/lists/index.test.ts`. That catches a re-added `export`
-without a build, though only for the barrel it names.
+A cheaper guard covering every lazy entry is `src/widgets/__tests__/lazyWidgetBarrels.test.ts`. It
+walks static, non-`type` imports from `src/index.tsx` and fails if any `widgetMap.ts` `import()`
+target is eagerly reachable, printing the whole import chain that created the edge. It reads source
+only, so it needs no build and runs in milliseconds - a fast complement to the build-time gates
+above, not a replacement for them.
 
 ### Barrels with no importers are inert
 
