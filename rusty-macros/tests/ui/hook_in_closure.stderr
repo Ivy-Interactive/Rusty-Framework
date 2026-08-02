@@ -1,0 +1,5 @@
+error: `use_state` is called inside a closure, which runs after `build` returns; its hook slot is not part of this build's call sequence. Call it at the top level of `build` and move the returned handle into the closure. Silence this rule for the whole impl block with `#[rusty::view(allow(conditional_hooks))]`.
+ --> tests/ui/hook_in_closure.rs:9:48
+  |
+9 |         let make_slot = |c: &mut BuildContext| use_state(c, 0i32);
+  |                                                ^^^^^^^^^

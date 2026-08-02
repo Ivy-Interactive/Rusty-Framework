@@ -1,6 +1,9 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{parse_macro_input, DeriveInput, ItemImpl};
+
+mod hook_rules;
+mod widget_checks;
 
 /// Derive macro for the Widget trait.
 ///
@@ -33,6 +36,18 @@ use syn::{parse_macro_input, DeriveInput};
 #[proc_macro_derive(Widget, attributes(prop, event))]
 pub fn derive_widget(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+    match expand_widget(&input) {
+        Ok(expanded) => expanded.into(),
+        Err(error) => error.to_compile_error().into(),
+    }
+}
+
+/// The derive's body, with every diagnostic routed through `syn::Result`.
+///
+/// Shape errors and the [`widget_checks`] diagnostics are collected rather than
+/// returned one at a time, so an author with three problems sees three messages
+/// instead of fixing them one compile at a time.
+fn expand_widget(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let name = &input.ident;
     let widget_type = to_snake_case(&name.to_string());
 
@@ -40,17 +55,25 @@ pub fn derive_widget(input: TokenStream) -> TokenStream {
         syn::Data::Struct(data) => match &data.fields {
             syn::Fields::Named(fields) => &fields.named,
             _ => {
-                return syn::Error::new_spanned(name, "Widget derive only supports named fields")
-                    .to_compile_error()
-                    .into()
+                return Err(syn::Error::new_spanned(
+                    name,
+                    "Widget derive only supports named fields",
+                ))
             }
         },
         _ => {
-            return syn::Error::new_spanned(name, "Widget derive only supports structs")
-                .to_compile_error()
-                .into()
+            return Err(syn::Error::new_spanned(
+                name,
+                "Widget derive only supports structs",
+            ))
         }
     };
+
+    // Bail before generating anything: the generated code is what turns these
+    // shapes into the type errors these diagnostics replace.
+    if let syn::Data::Struct(data) = &input.data {
+        widget_checks::check_struct(name, &data.fields)?;
+    }
 
     let prop_fields: Vec<_> = fields
         .iter()
@@ -131,7 +154,7 @@ pub fn derive_widget(input: TokenStream) -> TokenStream {
         quote! {}
     };
 
-    let expanded = quote! {
+    Ok(quote! {
         impl crate::views::view::WidgetData for #name {
             fn widget_type(&self) -> &str {
                 #widget_type
@@ -153,9 +176,58 @@ pub fn derive_widget(input: TokenStream) -> TokenStream {
             #assign_id_impl
             #children_mut_impl
         }
+    })
+}
+
+/// Check an `impl View for X` block against the framework's hook invariants.
+///
+/// Hook state lives in slots keyed by *call index*
+/// (`BuildContext::next_hook_index`), the same ordering rule as React and Ivy.
+/// Two ways to break it are invisible to the compiler, and this attribute makes
+/// both a compile error:
+///
+/// * **`conditional_hooks`** — a hook called inside an `if`, a `match` arm, a
+///   loop, a closure or an `async` block shifts every later hook's slot, so
+///   `get_or_init_state` starts returning another hook's value.
+/// * **`set_during_build`** — `State::set` / `State::update` called
+///   synchronously in `build` requests a rebuild of the view that is currently
+///   building: an unconditional rebuild loop. `use_ref` returns the same
+///   `State<T>` with rebuilds disabled, so the rule tracks which hook each
+///   binding came from instead of trusting the method name.
+///
+/// Both rules are syntactic, so both can be switched off for one impl block:
+///
+/// ```ignore
+/// #[rusty::view(allow(conditional_hooks))]
+/// impl View for MyApp {
+///     fn build(&self, ctx: &mut BuildContext) -> Element { /* ... */ }
+/// }
+/// ```
+///
+/// The attribute never changes the code it is applied to — it re-emits the impl
+/// block verbatim and appends any diagnostics, so a violation does not also
+/// produce "the trait `View` is not implemented" noise.
+#[proc_macro_attribute]
+pub fn view(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as ItemImpl);
+
+    let config = match hook_rules::parse_rule_config(attr.into()) {
+        Ok(config) => config,
+        // An unparseable attribute argument still emits the impl block, for the
+        // same reason a rule violation does.
+        Err(error) => {
+            let error = error.to_compile_error();
+            return quote! { #input #error }.into();
+        }
     };
 
-    TokenStream::from(expanded)
+    match hook_rules::check_impl(&input, &config) {
+        Ok(()) => quote! { #input }.into(),
+        Err(error) => {
+            let error = error.to_compile_error();
+            quote! { #input #error }.into()
+        }
+    }
 }
 
 fn to_snake_case(s: &str) -> String {

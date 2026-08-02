@@ -10,6 +10,10 @@ use std::time::Duration;
 ///
 /// Pass `None` for `duration` to pause the interval (the previous interval is
 /// cleaned up and no new one is started).
+#[expect(
+    clippy::disallowed_methods,
+    reason = "this *is* a hook implementation; `clippy.toml` forbids the slot machinery to view code"
+)]
 pub fn use_interval<F>(ctx: &mut BuildContext, duration: Option<Duration>, callback: F)
 where
     F: Fn() + Send + Sync + 'static,

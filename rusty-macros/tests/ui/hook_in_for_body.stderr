@@ -1,0 +1,5 @@
+error: `use_state` is called inside a `for` loop body; hooks are keyed by call order, so a conditional call shifts every later hook's slot. Hoist it to the top level of `build`. Silence this rule for the whole impl block with `#[rusty::view(allow(conditional_hooks))]`.
+  --> tests/ui/hook_in_for_body.rs:14:28
+   |
+14 |             let selected = use_state(ctx, false);
+   |                            ^^^^^^^^^

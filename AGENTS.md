@@ -27,6 +27,83 @@ pnpm format:check
 
 **Note:** Rust formatting is enforced on pre-commit via `.husky/pre-commit`. Staged `.rs` files are auto-formatted with `rustfmt --edition 2021 --config skip_children=true` and re-added. Partially staged files are checked as they exist in the index, never rewritten, and will block the commit with "Run: cargo fmt --all" if unformatted.
 
+## Hook rules
+
+Hook state lives in slots keyed by **call index** (`BuildContext::next_hook_index`,
+`rusty/src/views/view.rs`), the same ordering rule as React and Ivy. Two ways to break it are
+invisible to the compiler, and `rusty-macros` now makes both a compile error — opt in per impl block
+with `#[rusty::view]`:
+
+```rust
+#[rusty::view]
+impl View for MyApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element { /* ... */ }
+}
+```
+
+1. **`conditional_hooks`** — a hook called inside an `if` branch, a `match` arm, a `for`/`while`/
+   `loop` body, a closure or an `async` block shifts every later hook's slot, so
+   `HookStore::get_or_init_state` starts returning a different hook's value or re-initializing.
+   A hook in an `if` *condition* or a `match` scrutinee is fine: it runs on every build.
+2. **`set_during_build`** — `State::set` / `State::update` called synchronously in `build` requests
+   a rebuild of the view that is currently building, i.e. an unconditional rebuild loop. The rule
+   tracks which hook each binding came from (propagating through `.clone()`), because `use_ref`
+   returns the same `State<T>` type with rebuilds disabled — a name-only check reports three false
+   positives on a green tree. `.set()` inside a closure or an `async` block is deferred and not
+   flagged.
+
+Both rules are syntactic, so both have an escape hatch, and every diagnostic names the one that
+silences it:
+
+```rust
+#[rusty::view(allow(conditional_hooks))]
+#[rusty::view(allow(set_during_build))]
+#[rusty::view(allow(conditional_hooks, set_during_build))]
+```
+
+An unknown rule name in `allow(..)` is an error, not a silently disabled lint. `#[rusty::view]`
+never changes the code it annotates: it re-emits the impl block verbatim and appends diagnostics, so
+a violation does not also produce "the trait `View` is not implemented" noise.
+
+**Warnings are not available.** The only way a stable proc macro can emit a warning is a generated
+`#[deprecated]` item, and the diagnostic then points at the attribute rather than the offending
+line; `proc_macro::Diagnostic` is nightly-only and CI pins `dtolnay/rust-toolchain@stable`. So these
+are hard errors plus the `allow(..)` hatch.
+
+Applied to the five `impl View` blocks in `rusty/examples`. Library and test views are
+un-annotated — plain `cargo build --workspace` compiles **zero** examples, so
+`cargo clippy --workspace --all-targets` is the gate that actually reaches them.
+
+Tests live in `rusty-macros`: `cargo test -p rusty-macros` runs 51 unit tests over `syn::parse_str`
+fixtures plus a 19-case `trybuild` suite in `rusty-macros/tests/ui`. The `.stderr` files are
+**exact-match snapshots** — to accept a changed message, delete the `.stderr` and re-run, then move
+the file trybuild writes to **`rusty-macros/wip/`** back into `tests/ui/`. That path is the crate
+root, not `tests/ui/wip/`, whatever the failure message says; `wip/` is gitignored. Never hand-edit
+the snapshots. Seven
+`t.pass(..)` cases carry the shapes that already exist in the repo (hook in an `if` condition,
+`.set()` in a closure, `.set()` in `tokio::spawn(async move { .. })`, `.update()` on a `use_ref`
+binding) and each `allow(..)` hatch, so a rule that starts over-reporting fails there.
+
+`#[derive(Widget)]` also collects its diagnostics now, so multiple problems report at once instead
+of one per compile. Five checks, two of which close holes that previously compiled clean with zero
+warnings: a `Vec<Element>` / `Option<Vec<Element>>` field **not named `children`** (it gets no
+`children_mut`, so `Element::assign_ids` never descends into it and its whole subtree loses IDs and
+event registrations), and a struct with `#[event]` fields but no `#[prop]` fields and no `id` (it
+serializes to just its type and `has<Event>` flags). The other three replace type errors from deep
+inside generated code: `#[prop]` and `#[event]` on one field, an `#[event]` field that is not
+`Option<..>`, and an `id` that is not `Option<String>`.
+
+**`clippy.toml`** covers the one invariant the attribute cannot see: raw slot machinery
+(`BuildContext::next_hook_index`, `BuildContext::reset`, `HookStore::get_or_init_state`) via
+`disallowed_methods`, which is all stable clippy enforces — a real custom lint pass needs
+`rustc_private` on nightly or `cargo-dylint`. Note the key is hyphenated (`disallowed-methods`)
+while the lint is `disallowed_methods`, and it resolves **inherent methods as well as free
+functions**. `clippy.toml` has no path scoping, so the legitimate definition sites in
+`rusty/src/hooks/**`, `Runtime::build_view` and `BuildContext::child_view` carry
+`#[expect(clippy::disallowed_methods, ..)]` rather than `#[allow(..)]`: an expectation that stops
+being needed reports `unfulfilled_lint_expectations`, so the annotations cannot silently rot. Prefer
+covering an invariant in `#[rusty::view]` over `clippy.toml` wherever both could.
+
 ## Frontend (src/frontend)
 Vite+ toolchain, pnpm@10.33.0. Always `pnpm run <script>` or `pnpm exec vp` —
 a globally installed `vp` may be an older version and `vp migrate` would
