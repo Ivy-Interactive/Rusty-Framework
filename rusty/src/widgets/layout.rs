@@ -144,8 +144,8 @@ impl WidgetData for Layout {
             "justify": self.justify,
             "padding": self.padding,
             "columns": self.columns,
-            "width": self.width.as_ref().map(Size::to_css),
-            "height": self.height.as_ref().map(Size::to_css),
+            "width": self.width,
+            "height": self.height,
             "wrap": self.wrap,
         })
     }

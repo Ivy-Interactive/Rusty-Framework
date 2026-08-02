@@ -43,8 +43,8 @@ impl WidgetData for Skeleton {
         json!({
             "type": "skeleton",
             "id": self.id,
-            "width": self.width.as_ref().map(Size::to_css),
-            "height": self.height.as_ref().map(Size::to_css),
+            "width": self.width,
+            "height": self.height,
         })
     }
 

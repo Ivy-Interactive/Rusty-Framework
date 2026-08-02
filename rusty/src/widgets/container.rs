@@ -88,8 +88,8 @@ impl WidgetData for Container {
                 .map(|c| serde_json::to_value(c).unwrap_or_default())
                 .collect::<Vec<_>>(),
             "padding": self.padding,
-            "width": self.width.as_ref().map(Size::to_css),
-            "height": self.height.as_ref().map(Size::to_css),
+            "width": self.width,
+            "height": self.height,
             "background": self.background,
             "border": self.border,
             "rounded": self.rounded,
