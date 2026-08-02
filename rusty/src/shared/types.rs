@@ -27,6 +27,15 @@ impl Size {
     }
 }
 
+/// Render an optional [`Size`] as its CSS string, for `#[prop(with = ...)]`.
+///
+/// `Size`'s derived `Serialize` is `untagged` and therefore lossy on the wire
+/// (`Px(8.0)` and `Percent(8.0)` both become `8.0`), so widgets emit the CSS
+/// form instead. See [`Size::to_css`].
+pub fn size_css(size: &Option<Size>) -> Option<String> {
+    size.as_ref().map(Size::to_css)
+}
+
 /// Density level for widget rendering.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

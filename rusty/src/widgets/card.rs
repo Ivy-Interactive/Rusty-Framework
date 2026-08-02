@@ -1,19 +1,26 @@
-use crate::views::view::{BuildContext, Element, WidgetData};
+use crate::views::view::{BuildContext, Element};
+use rusty_macros::Widget;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 /// A container widget with optional header, body, and footer.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Widget)]
 pub struct Card {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subtitle: Option<String>,
+    #[prop]
+    #[children]
     pub children: Vec<Element>,
+    #[prop]
+    #[footer]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub footer: Option<Vec<Element>>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub padding: Option<f64>,
 }
@@ -70,48 +77,6 @@ impl Card {
 impl Default for Card {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl WidgetData for Card {
-    fn widget_type(&self) -> &str {
-        "card"
-    }
-
-    fn to_json(&self) -> serde_json::Value {
-        json!({
-            "type": "card",
-            "id": self.id,
-            "title": self.title,
-            "subtitle": self.subtitle,
-            "children": self.children.iter()
-                .map(|c| serde_json::to_value(c).unwrap_or_default())
-                .collect::<Vec<_>>(),
-            "footer": self.footer.as_ref().map(|f| f.iter()
-                .map(|c| serde_json::to_value(c).unwrap_or_default())
-                .collect::<Vec<_>>()),
-            "padding": self.padding,
-        })
-    }
-
-    fn clone_box(&self) -> Box<dyn WidgetData> {
-        Box::new(self.clone())
-    }
-
-    fn assign_id(&mut self, id: String) {
-        self.id = Some(id);
-    }
-
-    fn get_id(&self) -> Option<&str> {
-        self.id.as_deref()
-    }
-
-    fn children_mut(&mut self) -> Option<&mut Vec<Element>> {
-        Some(&mut self.children)
-    }
-
-    fn footer_mut(&mut self) -> Option<&mut Vec<Element>> {
-        self.footer.as_mut()
     }
 }
 
