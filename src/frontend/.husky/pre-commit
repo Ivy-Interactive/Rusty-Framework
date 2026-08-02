@@ -18,11 +18,18 @@ fi
 # The [ -f ] guard keeps commits working on checkouts that predate the script
 # (bisect, or an older branch), where an unguarded call exits 127.
 if [ -f ./scripts/precommit-rust-fmt.sh ]; then
-  sh -e ./scripts/precommit-rust-fmt.sh
+  sh -e ./scripts/precommit-rust-fmt.sh || exit 1
 fi
 
 # Compile-class gates for merge resolutions (no-op for ordinary commits).
-sh -e "$(git rev-parse --show-toplevel)/scripts/precommit-rust-gates.sh"
+# Same [ -f ] guard and `|| exit 1` as the fmt call above: without the guard a
+# checkout predating the script fails every commit with 127, and without the
+# explicit propagation a non-final command's status is discarded when the hook
+# is run by hand (no `sh -e`).
+GATES="$(git rev-parse --show-toplevel)/scripts/precommit-rust-gates.sh"
+if [ -f "$GATES" ]; then
+  sh -e "$GATES" || exit 1
+fi
 
 # Check if any frontend files are staged
 FRONTEND_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep "^src/frontend/" || true)

@@ -115,7 +115,7 @@ fn expand_widget(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
         .iter()
         .filter(|f| has_attr(f, "event"))
         .map(EventSpec::parse)
-        .collect::<syn::Result<_>>()?;
+        .collect::<syn::Result<Vec<_>>>()?;
 
     let has_id_field = fields
         .iter()

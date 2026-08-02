@@ -53,6 +53,18 @@ impl ServiceRegistry {
             .and_then(|any| any.downcast::<T>().ok())
     }
 
+    /// Copy every service registered in `other` into this registry, replacing entries of
+    /// the same type.
+    ///
+    /// Used to fold server-level services (registered once on `RustyServer`) into each
+    /// per-session registry. Copying `Arc`s means the instances stay shared across
+    /// sessions - only the lookup table is per-session.
+    pub fn extend_from(&self, other: &ServiceRegistry) {
+        let source = other.map.read().unwrap().clone();
+        let mut target = self.map.write().unwrap();
+        target.extend(source);
+    }
+
     /// Number of registered services.
     pub fn len(&self) -> usize {
         self.map.read().unwrap().len()
