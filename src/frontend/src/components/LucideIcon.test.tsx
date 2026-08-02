@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import React from "react";
 import { flushSync } from "react-dom";
 import { createRoot, Root } from "react-dom/client";
 import LucideIcon from "./LucideIcon";

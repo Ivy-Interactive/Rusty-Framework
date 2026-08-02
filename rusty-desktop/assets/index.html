@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Rusty Widget E2E</title>
+  <title>Rusty Desktop</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 16px; }
@@ -56,9 +56,12 @@
   <script>
     const app = document.getElementById('app');
     const pageQuery = new URLSearchParams(window.location.search);
-    const wsPort = pageQuery.get('port') || window.location.port;
+    // The shell serves this page from the same embedded server it opens the WebSocket
+    // against, so the host is always the page's own host. This is the one deliberate
+    // divergence from e2e/app/index.html, which reads a `?port=` override because the
+    // Playwright harness loads the page from a different origin than the server.
     const wsAppId = pageQuery.get('appId');
-    const wsUrl = `ws://${window.location.hostname}:${wsPort}/ws`
+    const wsUrl = `ws://${window.location.host}/ws`
       + (wsAppId ? `?appId=${encodeURIComponent(wsAppId)}` : '');
 
     // Message counters so E2E specs can distinguish a full Refresh from Update patches.
@@ -102,6 +105,17 @@
         ws.send(JSON.stringify({ method: 'navigate', appId: appId, state: null }));
       }
     };
+
+    // `Color` serializes untagged: a named colour or hex arrives as a string,
+    // an rgba arrives as `{r, g, b, a}`.
+    function cssColor(value) {
+      if (value == null) return null;
+      if (typeof value === 'string') return value;
+      if (typeof value === 'object' && value.r != null) {
+        return `rgba(${value.r}, ${value.g}, ${value.b}, ${value.a})`;
+      }
+      return String(value);
+    }
 
     function renderWidget(node) {
       if (!node || typeof node !== 'object') {
@@ -565,7 +579,7 @@
           if (node.padding != null) el.style.padding = node.padding + 'px';
           if (node.width) el.style.width = node.width;
           if (node.height) el.style.height = node.height;
-          const background = node.background;
+          const background = cssColor(node.background);
           if (background) {
             el.style.background = background;
             el.setAttribute('data-background', background);
@@ -583,7 +597,7 @@
             el.setAttribute('data-size', String(node.size));
             el.style.fontSize = node.size + 'px';
           }
-          const color = node.color;
+          const color = cssColor(node.color);
           if (color) {
             el.setAttribute('data-color', color);
             el.style.color = color;

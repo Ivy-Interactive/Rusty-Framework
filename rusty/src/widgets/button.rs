@@ -1,8 +1,7 @@
-use crate::core::event_registry::EventRegistry;
 use crate::shared::{Color, Density, Icon};
-use crate::views::view::{BuildContext, Element, WidgetData};
+use crate::views::view::{BuildContext, Element};
+use rusty_macros::Widget;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -17,21 +16,29 @@ pub enum ButtonVariant {
 }
 
 /// A clickable button widget.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Widget)]
 pub struct Button {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    #[prop]
     pub title: String,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub variant: Option<ButtonVariant>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<Icon>,
+    #[prop]
     pub disabled: bool,
+    #[prop]
     pub loading: bool,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<Color>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub density: Option<Density>,
+    #[event]
     #[serde(skip)]
     pub on_click: Option<Arc<dyn Fn() + Send + Sync>>,
 }
@@ -113,46 +120,6 @@ impl Button {
     }
 }
 
-impl WidgetData for Button {
-    fn widget_type(&self) -> &str {
-        "button"
-    }
-
-    fn to_json(&self) -> serde_json::Value {
-        json!({
-            "type": "button",
-            "id": self.id,
-            "title": self.title,
-            "variant": self.variant,
-            "icon": self.icon,
-            "disabled": self.disabled,
-            "loading": self.loading,
-            "color": self.color,
-            "density": self.density,
-            "hasOnClick": self.on_click.is_some(),
-        })
-    }
-
-    fn clone_box(&self) -> Box<dyn WidgetData> {
-        Box::new(self.clone())
-    }
-
-    fn assign_id(&mut self, id: String) {
-        self.id = Some(id);
-    }
-
-    fn get_id(&self) -> Option<&str> {
-        self.id.as_deref()
-    }
-
-    fn register_events(&self, widget_id: &str, registry: &mut EventRegistry) {
-        if let Some(handler) = &self.on_click {
-            let handler = handler.clone();
-            registry.register(widget_id, "click", Arc::new(move |_args| handler()));
-        }
-    }
-}
-
 impl From<Button> for Element {
     fn from(button: Button) -> Self {
         button.into_element()
@@ -163,6 +130,8 @@ impl From<Button> for Element {
 mod tests {
     use super::*;
     use crate::hooks::hook_store::HookStore;
+    use crate::views::view::WidgetData;
+    use serde_json::json;
 
     #[test]
     fn test_button_builder() {

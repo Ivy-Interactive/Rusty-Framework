@@ -1,7 +1,7 @@
 use crate::shared::{Align, Justify, Size};
-use crate::views::view::{BuildContext, Element, WidgetData};
+use crate::views::view::{BuildContext, Element};
+use rusty_macros::Widget;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -12,26 +12,37 @@ pub enum LayoutDirection {
 }
 
 /// A flexbox-style layout container widget.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Widget)]
 pub struct Layout {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    #[prop]
     pub direction: LayoutDirection,
+    #[prop]
+    #[children]
     pub children: Vec<Element>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gap: Option<f64>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub align: Option<Align>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub justify: Option<Justify>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub padding: Option<f64>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub columns: Option<usize>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub width: Option<Size>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub height: Option<Size>,
+    #[prop]
     pub wrap: bool,
 }
 
@@ -122,51 +133,6 @@ impl Layout {
     }
 }
 
-impl WidgetData for Layout {
-    fn widget_type(&self) -> &str {
-        "layout"
-    }
-
-    fn to_json(&self) -> serde_json::Value {
-        let children_json: Vec<serde_json::Value> = self
-            .children
-            .iter()
-            .map(|c| serde_json::to_value(c).unwrap_or_default())
-            .collect();
-
-        json!({
-            "type": "layout",
-            "id": self.id,
-            "direction": self.direction,
-            "children": children_json,
-            "gap": self.gap,
-            "align": self.align,
-            "justify": self.justify,
-            "padding": self.padding,
-            "columns": self.columns,
-            "width": self.width.as_ref().map(Size::to_css),
-            "height": self.height.as_ref().map(Size::to_css),
-            "wrap": self.wrap,
-        })
-    }
-
-    fn clone_box(&self) -> Box<dyn WidgetData> {
-        Box::new(self.clone())
-    }
-
-    fn assign_id(&mut self, id: String) {
-        self.id = Some(id);
-    }
-
-    fn get_id(&self) -> Option<&str> {
-        self.id.as_deref()
-    }
-
-    fn children_mut(&mut self) -> Option<&mut Vec<Element>> {
-        Some(&mut self.children)
-    }
-}
-
 impl From<Layout> for Element {
     fn from(layout: Layout) -> Self {
         layout.into_element()
@@ -176,6 +142,7 @@ impl From<Layout> for Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::views::view::WidgetData;
     use crate::widgets::text::TextBlock;
 
     #[test]

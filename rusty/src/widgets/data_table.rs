@@ -1,9 +1,8 @@
-use crate::core::event_registry::EventRegistry;
 use crate::shared::{Align, Color, Icon, Size};
-use crate::views::view::{Element, WidgetData};
+use crate::views::view::Element;
 use rusty_filter::{ColumnDef, ColumnType, ParseError};
+use rusty_macros::Widget;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::sync::Arc;
 
 /// The value type of a `DataTableColumn`, driving how the frontend formats cells.
@@ -303,19 +302,29 @@ pub struct RowActionArgs {
 /// to a gRPC `DataTableService` that Rusty does not implement, so typing there
 /// still goes nowhere. Sorting, aggregation and pagination are likewise not
 /// ported.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Widget)]
 pub struct DataTable {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    #[prop]
     pub columns: Vec<DataTableColumn>,
+    #[prop]
     pub rows: Vec<serde_json::Value>,
+    #[prop]
     pub config: DataTableConfig,
+    // Emitted through `Size`'s own (untagged) `Serialize`, unlike `Layout` and
+    // `Skeleton`, which use the `size_css` hook. Preserved as-is so the wire
+    // format does not change; see the plan's recommendation on `Size`.
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub width: Option<Size>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub height: Option<Size>,
+    #[event(payload)]
     #[serde(skip)]
     pub on_cell_click: Option<Arc<dyn Fn(CellClickArgs) + Send + Sync>>,
+    #[event(payload)]
     #[serde(skip)]
     pub on_row_action: Option<Arc<dyn Fn(RowActionArgs) + Send + Sync>>,
 }
@@ -440,65 +449,6 @@ impl DataTable {
     }
 }
 
-impl WidgetData for DataTable {
-    fn widget_type(&self) -> &str {
-        "data_table"
-    }
-
-    fn to_json(&self) -> serde_json::Value {
-        json!({
-            "type": "data_table",
-            "id": self.id,
-            "columns": self.columns,
-            "rows": self.rows,
-            "config": self.config,
-            "width": self.width,
-            "height": self.height,
-            "hasOnCellClick": self.on_cell_click.is_some(),
-            "hasOnRowAction": self.on_row_action.is_some(),
-        })
-    }
-
-    fn clone_box(&self) -> Box<dyn WidgetData> {
-        Box::new(self.clone())
-    }
-
-    fn assign_id(&mut self, id: String) {
-        self.id = Some(id);
-    }
-
-    fn get_id(&self) -> Option<&str> {
-        self.id.as_deref()
-    }
-
-    fn register_events(&self, widget_id: &str, registry: &mut EventRegistry) {
-        if let Some(handler) = &self.on_cell_click {
-            let handler = handler.clone();
-            registry.register(
-                widget_id,
-                "cellclick",
-                Arc::new(move |args| {
-                    if let Ok(parsed) = serde_json::from_value::<CellClickArgs>(args) {
-                        handler(parsed);
-                    }
-                }),
-            );
-        }
-        if let Some(handler) = &self.on_row_action {
-            let handler = handler.clone();
-            registry.register(
-                widget_id,
-                "rowaction",
-                Arc::new(move |args| {
-                    if let Ok(parsed) = serde_json::from_value::<RowActionArgs>(args) {
-                        handler(parsed);
-                    }
-                }),
-            );
-        }
-    }
-}
-
 impl From<DataTable> for Element {
     fn from(table: DataTable) -> Self {
         table.into_element()
@@ -509,7 +459,8 @@ impl From<DataTable> for Element {
 mod tests {
     use super::*;
     use crate::hooks::hook_store::HookStore;
-    use crate::views::view::BuildContext;
+    use crate::views::view::{BuildContext, WidgetData};
+    use serde_json::json;
     use std::sync::Mutex;
 
     fn sample_columns() -> Vec<DataTableColumn> {

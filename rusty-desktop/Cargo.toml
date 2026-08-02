@@ -1,0 +1,37 @@
+[package]
+name = "rusty-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Native desktop app shell for Rusty-Framework applications"
+
+[dependencies]
+rusty = { path = "../rusty" }
+tokio.workspace = true
+axum.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true
+# Optional: these do NOT build on ubuntu-latest (no libwebkit2gtk-4.1-dev). See `shell` feature.
+wry = { version = "0.55", optional = true }
+tao = { version = "0.33", optional = true }
+muda = { version = "0.17", optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+
+[features]
+default = ["shell"]
+# Native window + WebView + menu bar. On by default for developers; CI builds
+# --no-default-features because ubuntu-latest lacks the WebKitGTK dev packages.
+shell = ["dep:wry", "dep:tao", "dep:muda"]
+# wry gates open_devtools/close_devtools on `any(debug_assertions, feature = "devtools")`;
+# this feature forwards to it so a release build can still open the inspector.
+devtools = ["shell", "wry/devtools"]
+
+[[bin]]
+name = "rusty-desktop"
+path = "src/main.rs"
+# Without this, --no-default-features still tries to compile main.rs and fails on
+# the missing `tao` import.
+required-features = ["shell"]

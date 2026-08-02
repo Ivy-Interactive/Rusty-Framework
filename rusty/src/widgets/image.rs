@@ -59,8 +59,8 @@ impl WidgetData for Image {
             "id": self.id,
             "src": self.src,
             "alt": self.alt,
-            "width": self.width.as_ref().map(Size::to_css),
-            "height": self.height.as_ref().map(Size::to_css),
+            "width": self.width,
+            "height": self.height,
         })
     }
 

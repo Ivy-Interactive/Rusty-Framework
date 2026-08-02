@@ -1,63 +1,44 @@
+// Eager vs lazy: how to choose when adding a widget.
+//
+// Default to lazy - `lazyWithRetry(() => import("@/widgets/<dir>/<Widget>"))`, naming the concrete
+// module and never a barrel. The renderer already wraps any lazy component in <Suspense>
+// (widgetRenderer.tsx), so lazy needs no other change. Keep an entry eager only for one of the
+// reasons below; if none applies, it is lazy.
+//
+// Stay eager when:
+//   - It is the loading fallback itself ($loading / LoadingScreen). It cannot be behind Suspense.
+//   - Measurement shows lazifying it makes the initial download BIGGER. Ivy.AppHost is the known
+//     case: it hosts a whole app and carries the signalr transport, and lazifying it cost +11.4 kB
+//     and fragmented 31 extra chunks.
+//
+// Two things that are NOT reasons, both measured:
+//   - "It is small." Eager cost is not the widget's own bytes, it is what its dependencies drag in,
+//     and a shared dependency stays eager until its LAST eager importer leaves. Ivy.Icon lazified
+//     alone moves 0 bytes (25 modules reach @/components/Icon); the whole eager list lazified moves
+//     666.6 kB (-25 %) and drops the 475 kB Icon chunk out of the eager graph.
+//   - "It is needed on first paint." Widgets are chosen by server-driven type strings at runtime, so
+//     no entry here is known to be on the first screen. Suspense covers the fetch.
+//
+// A barrel that re-exports a lazily-imported widget defeats the split even when the import() names
+// the concrete module; the barrel must not re-export it. The assert-lazy-chunks plugin in
+// vite.config.mjs fails the build on exactly that mistake, so `pnpm run build` catches it - but it
+// does NOT measure eager cost, so a green build does not mean an entry belongs on the eager side.
+// For that, walk static import edges from the entry chunk - see README.md, "Module Graph and Lazy
+// Loading".
+
 import { LoadingScreen } from "@/components/LoadingScreen";
-import { ArticleWidget } from "@/widgets/article";
-import { CardWidget } from "@/widgets/card";
-import { BadgeWidget } from "@/widgets/badge";
-import { ExpandableWidget } from "@/widgets/expandable";
-import { ProgressWidget } from "@/widgets/progress";
-import { SlotWidget } from "@/widgets/slot";
-import { TooltipWidget } from "@/widgets/tooltip";
-import { PaginationWidget } from "@/widgets/pagination";
-import { ChatLoadingWidget, ChatMessageWidget, ChatStatusWidget } from "@/widgets/chat";
-import { ToolbarWidget } from "@/widgets/toolbar";
-import { BreadcrumbsWidget } from "@/widgets/breadcrumbs";
-import { FileDialogWidget, SaveDialogWidget, FolderDialogWidget } from "@/widgets/filePicker";
-import { BladeContainerWidget, BladeWidget } from "@/widgets/blades";
-import { DetailsWidget, DetailWidget } from "@/widgets/details";
-import { DialogWidget } from "@/widgets/dialogs/DialogWidget";
-import { DialogHeaderWidget } from "@/widgets/dialogs/DialogHeaderWidget";
-import { DialogBodyWidget } from "@/widgets/dialogs/DialogBodyWidget";
-import { DialogFooterWidget } from "@/widgets/dialogs/DialogFooterWidget";
-import { FormWidget } from "@/widgets/forms";
-import { FieldWidget } from "@/widgets/inputs/FieldWidget";
-import { TextInputWidget } from "@/widgets/inputs/TextInputWidget";
-import { ReadOnlyInputWidget } from "@/widgets/inputs/ReadOnlyInputWidget";
-import { StackLayoutWidget } from "@/widgets/layouts/StackLayoutWidget";
-import { GridLayoutWidget } from "@/widgets/layouts/GridLayoutWidget";
-import { HeaderLayoutWidget } from "@/widgets/layouts/HeaderLayoutWidget";
-import { FooterLayoutWidget } from "@/widgets/layouts/FooterLayoutWidget";
-import { FloatingPanelWidget } from "@/widgets/layouts/FloatingPanelWidget";
-// Imported from the concrete module rather than the "@/widgets/lists" barrel. The barrel no longer
-// re-exports the lazy-loaded ListWidget, so either form works today, but importing the concrete
-// module keeps this eager import safe if the barrel ever grows again. See README.md, "Module Graph
-// and Lazy Loading".
-import { ListItemWidget } from "@/widgets/lists/ListItemWidget";
-import { TextBlockWidget } from "@/widgets/primitives/TextBlockWidget";
-import { HtmlWidget } from "@/widgets/primitives/HtmlWidget";
-import { ErrorWidget } from "@/widgets/primitives/ErrorWidget";
-import { SvgWidget } from "@/widgets/primitives/SvgWidget";
-import { IframeWidget } from "@/widgets/primitives/IframeWidget";
-import { FragmentWidget } from "@/widgets/primitives/FragmentWidget";
-import { SeparatorWidget } from "@/widgets/primitives/SeparatorWidget";
-import { SkeletonWidget } from "@/widgets/primitives/SkeletonWidget";
-import { IconWidget } from "@/widgets/primitives/IconWidget";
-import { BoxWidget } from "@/widgets/primitives/BoxWidget";
-import { CalloutWidget } from "@/widgets/primitives/CalloutWidget";
-import { KbdWidget } from "@/widgets/primitives/KbdWidget";
-import { EmptyWidget } from "@/widgets/primitives/EmptyWidget";
-import { AvatarWidget } from "@/widgets/primitives/AvatarWidget";
-import { IvyLogoWidget } from "@/widgets/primitives/IvyLogoWidget";
-import { SpacerWidget } from "@/widgets/primitives/SpacerWidget";
-import { LoadingWidget } from "@/widgets/primitives/LoadingWidget";
 import { AppHostWidget } from "@/widgets/primitives/AppHostWidget";
-import { AutoScrollWidget } from "@/widgets/primitives/AutoScrollWidget";
-import { TableWidget, TableRowWidget, TableCellWidget } from "@/widgets/tables";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
 
 export const widgetMap = {
   $loading: LoadingScreen,
 
   // Primitives
-  "Ivy.TextBlock": TextBlockWidget,
+  "Ivy.TextBlock": lazyWithRetry(() =>
+    import("@/widgets/primitives/TextBlockWidget").then((m) => ({
+      default: m.TextBlockWidget,
+    })),
+  ),
   "Ivy.RichTextBlock": lazyWithRetry(() =>
     import("@/widgets/primitives/RichTextBlockWidget").then((m) => ({
       default: m.RichTextBlockWidget,
@@ -65,33 +46,101 @@ export const widgetMap = {
   ),
   "Ivy.Markdown": lazyWithRetry(() => import("@/widgets/primitives/MarkdownWidget")),
   "Ivy.Json": lazyWithRetry(() => import("@/widgets/primitives/JsonWidget")),
-  "Ivy.Html": HtmlWidget,
+  "Ivy.Html": lazyWithRetry(() =>
+    import("@/widgets/primitives/HtmlWidget").then((m) => ({
+      default: m.HtmlWidget,
+    })),
+  ),
   "Ivy.Xml": lazyWithRetry(() => import("@/widgets/primitives/XmlWidget")),
-  "Ivy.Error": ErrorWidget,
-  "Ivy.Svg": SvgWidget,
+  "Ivy.Error": lazyWithRetry(() =>
+    import("@/widgets/primitives/ErrorWidget").then((m) => ({
+      default: m.ErrorWidget,
+    })),
+  ),
+  "Ivy.Svg": lazyWithRetry(() =>
+    import("@/widgets/primitives/SvgWidget").then((m) => ({
+      default: m.SvgWidget,
+    })),
+  ),
   "Ivy.Image": lazyWithRetry(() =>
     import("@/widgets/primitives/ImageWidget").then((m) => ({
       default: m.ImageWidget,
     })),
   ),
-  "Ivy.Iframe": IframeWidget,
+  "Ivy.Iframe": lazyWithRetry(() =>
+    import("@/widgets/primitives/IframeWidget").then((m) => ({
+      default: m.IframeWidget,
+    })),
+  ),
   "Ivy.CodeBlock": lazyWithRetry(() => import("@/widgets/primitives/CodeBlockWidget")),
-  "Ivy.Fragment": FragmentWidget,
-  "Ivy.Separator": SeparatorWidget,
-  "Ivy.Skeleton": SkeletonWidget,
-  "Ivy.Icon": IconWidget,
-  "Ivy.Box": BoxWidget,
+  "Ivy.Fragment": lazyWithRetry(() =>
+    import("@/widgets/primitives/FragmentWidget").then((m) => ({
+      default: m.FragmentWidget,
+    })),
+  ),
+  "Ivy.Separator": lazyWithRetry(() =>
+    import("@/widgets/primitives/SeparatorWidget").then((m) => ({
+      default: m.SeparatorWidget,
+    })),
+  ),
+  "Ivy.Skeleton": lazyWithRetry(() =>
+    import("@/widgets/primitives/SkeletonWidget").then((m) => ({
+      default: m.SkeletonWidget,
+    })),
+  ),
+  "Ivy.Icon": lazyWithRetry(() =>
+    import("@/widgets/primitives/IconWidget").then((m) => ({
+      default: m.IconWidget,
+    })),
+  ),
+  "Ivy.Box": lazyWithRetry(() =>
+    import("@/widgets/primitives/BoxWidget").then((m) => ({
+      default: m.BoxWidget,
+    })),
+  ),
   "Ivy.Embed": lazyWithRetry(() => import("@/widgets/primitives/EmbedWidget")),
   "Ivy.Script": lazyWithRetry(() => import("@/widgets/primitives/ScriptWidget")),
-  "Ivy.Callout": CalloutWidget,
-  "Ivy.Kbd": KbdWidget,
-  "Ivy.Empty": EmptyWidget,
-  "Ivy.Avatar": AvatarWidget,
-  "Ivy.IvyLogo": IvyLogoWidget,
-  "Ivy.Spacer": SpacerWidget,
-  "Ivy.Loading": LoadingWidget,
+  "Ivy.Callout": lazyWithRetry(() =>
+    import("@/widgets/primitives/CalloutWidget").then((m) => ({
+      default: m.CalloutWidget,
+    })),
+  ),
+  "Ivy.Kbd": lazyWithRetry(() =>
+    import("@/widgets/primitives/KbdWidget").then((m) => ({
+      default: m.KbdWidget,
+    })),
+  ),
+  "Ivy.Empty": lazyWithRetry(() =>
+    import("@/widgets/primitives/EmptyWidget").then((m) => ({
+      default: m.EmptyWidget,
+    })),
+  ),
+  "Ivy.Avatar": lazyWithRetry(() =>
+    import("@/widgets/primitives/AvatarWidget").then((m) => ({
+      default: m.AvatarWidget,
+    })),
+  ),
+  "Ivy.IvyLogo": lazyWithRetry(() =>
+    import("@/widgets/primitives/IvyLogoWidget").then((m) => ({
+      default: m.IvyLogoWidget,
+    })),
+  ),
+  "Ivy.Spacer": lazyWithRetry(() =>
+    import("@/widgets/primitives/SpacerWidget").then((m) => ({
+      default: m.SpacerWidget,
+    })),
+  ),
+  "Ivy.Loading": lazyWithRetry(() =>
+    import("@/widgets/primitives/LoadingWidget").then((m) => ({
+      default: m.LoadingWidget,
+    })),
+  ),
   "Ivy.AppHost": AppHostWidget,
-  "Ivy.AutoScroll": AutoScrollWidget,
+  "Ivy.AutoScroll": lazyWithRetry(() =>
+    import("@/widgets/primitives/AutoScrollWidget").then((m) => ({
+      default: m.AutoScrollWidget,
+    })),
+  ),
   "Ivy.AudioPlayer": lazyWithRetry(() =>
     import("@/widgets/primitives/AudioPlayerWidget").then((m) => ({
       default: m.AudioPlayerWidget,
@@ -106,44 +155,96 @@ export const widgetMap = {
   "Ivy.Terminal": lazyWithRetry(() => import("@/widgets/primitives/TerminalWidget")),
 
   // Widgets
-  "Ivy.Article": ArticleWidget,
+  "Ivy.Article": lazyWithRetry(() =>
+    import("@/widgets/article/ArticleWidget").then((m) => ({
+      default: m.ArticleWidget,
+    })),
+  ),
   "Ivy.Button": lazyWithRetry(() =>
     import("@/widgets/button/ButtonWidget").then((m) => ({
       default: m.ButtonWidget,
     })),
   ),
-  "Ivy.Progress": ProgressWidget,
+  "Ivy.Progress": lazyWithRetry(() =>
+    import("@/widgets/progress/ProgressWidget").then((m) => ({
+      default: m.ProgressWidget,
+    })),
+  ),
   "Ivy.StackedProgress": lazyWithRetry(() =>
     import("@/widgets/stackedProgress/StackedProgressWidget").then((m) => ({
       default: m.StackedProgressWidget,
     })),
   ),
-  "Ivy.Tooltip": TooltipWidget,
-  "Ivy.Toolbar": ToolbarWidget,
-  "Ivy.Slot": SlotWidget,
-  "Ivy.Card": CardWidget,
+  "Ivy.Tooltip": lazyWithRetry(() =>
+    import("@/widgets/tooltip/TooltipWidget").then((m) => ({
+      default: m.TooltipWidget,
+    })),
+  ),
+  "Ivy.Toolbar": lazyWithRetry(() =>
+    import("@/widgets/toolbar/ToolbarWidget").then((m) => ({
+      default: m.ToolbarWidget,
+    })),
+  ),
+  "Ivy.Slot": lazyWithRetry(() =>
+    import("@/widgets/slot/SlotWidget").then((m) => ({
+      default: m.SlotWidget,
+    })),
+  ),
+  "Ivy.Card": lazyWithRetry(() =>
+    import("@/widgets/card/CardWidget").then((m) => ({
+      default: m.CardWidget,
+    })),
+  ),
   "Ivy.Sheet": lazyWithRetry(() =>
     import("@/widgets/sheet/SheetWidget").then((m) => ({
       default: m.SheetWidget,
     })),
   ),
-  "Ivy.Badge": BadgeWidget,
-  "Ivy.Breadcrumbs": BreadcrumbsWidget,
-  "Ivy.Expandable": ExpandableWidget,
+  "Ivy.Badge": lazyWithRetry(() =>
+    import("@/widgets/badge/BadgeWidget").then((m) => ({
+      default: m.BadgeWidget,
+    })),
+  ),
+  "Ivy.Breadcrumbs": lazyWithRetry(() =>
+    import("@/widgets/breadcrumbs/BreadcrumbsWidget").then((m) => ({
+      default: m.BreadcrumbsWidget,
+    })),
+  ),
+  "Ivy.Expandable": lazyWithRetry(() =>
+    import("@/widgets/expandable/ExpandableWidget").then((m) => ({
+      default: m.ExpandableWidget,
+    })),
+  ),
   "Ivy.Chat": lazyWithRetry(() =>
     import("@/widgets/chat/ChatWidget").then((m) => ({
       default: m.ChatWidget,
     })),
   ),
-  "Ivy.ChatMessage": ChatMessageWidget,
-  "Ivy.ChatLoading": ChatLoadingWidget,
-  "Ivy.ChatStatus": ChatStatusWidget,
+  "Ivy.ChatMessage": lazyWithRetry(() =>
+    import("@/widgets/chat/ChatMessageWidget").then((m) => ({
+      default: m.ChatMessageWidget,
+    })),
+  ),
+  "Ivy.ChatLoading": lazyWithRetry(() =>
+    import("@/widgets/chat/ChatLoadingWidget").then((m) => ({
+      default: m.ChatLoadingWidget,
+    })),
+  ),
+  "Ivy.ChatStatus": lazyWithRetry(() =>
+    import("@/widgets/chat/ChatStatusWidget").then((m) => ({
+      default: m.ChatStatusWidget,
+    })),
+  ),
   "Ivy.DropDownMenu": lazyWithRetry(() =>
     import("@/widgets/dropDownMenu/DropDownMenuWidget").then((m) => ({
       default: m.DropDownMenuWidget,
     })),
   ),
-  "Ivy.Pagination": PaginationWidget,
+  "Ivy.Pagination": lazyWithRetry(() =>
+    import("@/widgets/pagination/PaginationWidget").then((m) => ({
+      default: m.PaginationWidget,
+    })),
+  ),
   "Ivy.Kanban": lazyWithRetry(() =>
     import("@/widgets/kanban/KanbanWidget").then((m) => ({
       default: m.KanbanWidget,
@@ -166,10 +267,26 @@ export const widgetMap = {
   ),
 
   // Layouts
-  "Ivy.StackLayout": StackLayoutWidget,
-  "Ivy.GridLayout": GridLayoutWidget,
-  "Ivy.HeaderLayout": HeaderLayoutWidget,
-  "Ivy.FooterLayout": FooterLayoutWidget,
+  "Ivy.StackLayout": lazyWithRetry(() =>
+    import("@/widgets/layouts/StackLayoutWidget").then((m) => ({
+      default: m.StackLayoutWidget,
+    })),
+  ),
+  "Ivy.GridLayout": lazyWithRetry(() =>
+    import("@/widgets/layouts/GridLayoutWidget").then((m) => ({
+      default: m.GridLayoutWidget,
+    })),
+  ),
+  "Ivy.HeaderLayout": lazyWithRetry(() =>
+    import("@/widgets/layouts/HeaderLayoutWidget").then((m) => ({
+      default: m.HeaderLayoutWidget,
+    })),
+  ),
+  "Ivy.FooterLayout": lazyWithRetry(() =>
+    import("@/widgets/layouts/FooterLayoutWidget").then((m) => ({
+      default: m.FooterLayoutWidget,
+    })),
+  ),
   "Ivy.TabsLayout": lazyWithRetry(() =>
     import("@/widgets/layouts/tabs/TabsLayoutWidget").then((m) => ({
       default: m.TabsLayoutWidget,
@@ -200,11 +317,23 @@ export const widgetMap = {
       default: m.ResizablePanelWidget,
     })),
   ),
-  "Ivy.FloatingPanel": FloatingPanelWidget,
+  "Ivy.FloatingPanel": lazyWithRetry(() =>
+    import("@/widgets/layouts/FloatingPanelWidget").then((m) => ({
+      default: m.FloatingPanelWidget,
+    })),
+  ),
 
   // Inputs
-  "Ivy.Field": FieldWidget,
-  "Ivy.TextInput": TextInputWidget,
+  "Ivy.Field": lazyWithRetry(() =>
+    import("@/widgets/inputs/FieldWidget").then((m) => ({
+      default: m.FieldWidget,
+    })),
+  ),
+  "Ivy.TextInput": lazyWithRetry(() =>
+    import("@/widgets/inputs/TextInputWidget/TextInputWidget").then((m) => ({
+      default: m.TextInputWidget,
+    })),
+  ),
   "Ivy.BoolInput": lazyWithRetry(() =>
     import("@/widgets/inputs/BoolInputWidget").then((m) => ({
       default: m.BoolInputWidget,
@@ -230,7 +359,11 @@ export const widgetMap = {
       default: m.SelectInputWidget,
     })),
   ),
-  "Ivy.ReadOnlyInput": ReadOnlyInputWidget,
+  "Ivy.ReadOnlyInput": lazyWithRetry(() =>
+    import("@/widgets/inputs/ReadOnlyInputWidget").then((m) => ({
+      default: m.ReadOnlyInputWidget,
+    })),
+  ),
   "Ivy.ColorInput": lazyWithRetry(() =>
     import("@/widgets/inputs/ColorInputWidget").then((m) => ({
       default: m.ColorInputWidget,
@@ -277,27 +410,79 @@ export const widgetMap = {
   "Ivy.CameraInput": lazyWithRetry(() => import("@/widgets/cameraInput/CameraInputWidget")),
 
   // Forms
-  "Ivy.Form": FormWidget,
+  "Ivy.Form": lazyWithRetry(() =>
+    import("@/widgets/forms/FormWidget").then((m) => ({
+      default: m.FormWidget,
+    })),
+  ),
 
   // File Pickers
-  "Ivy.FileDialog": FileDialogWidget,
-  "Ivy.SaveDialog": SaveDialogWidget,
-  "Ivy.FolderDialog": FolderDialogWidget,
+  "Ivy.FileDialog": lazyWithRetry(() =>
+    import("@/widgets/filePicker/FileDialogWidget").then((m) => ({
+      default: m.FileDialogWidget,
+    })),
+  ),
+  "Ivy.SaveDialog": lazyWithRetry(() =>
+    import("@/widgets/filePicker/SaveDialogWidget").then((m) => ({
+      default: m.SaveDialogWidget,
+    })),
+  ),
+  "Ivy.FolderDialog": lazyWithRetry(() =>
+    import("@/widgets/filePicker/FolderDialogWidget").then((m) => ({
+      default: m.FolderDialogWidget,
+    })),
+  ),
 
   // Dialogs
-  "Ivy.Dialog": DialogWidget,
-  "Ivy.DialogHeader": DialogHeaderWidget,
-  "Ivy.DialogBody": DialogBodyWidget,
-  "Ivy.DialogFooter": DialogFooterWidget,
+  "Ivy.Dialog": lazyWithRetry(() =>
+    import("@/widgets/dialogs/DialogWidget").then((m) => ({
+      default: m.DialogWidget,
+    })),
+  ),
+  "Ivy.DialogHeader": lazyWithRetry(() =>
+    import("@/widgets/dialogs/DialogHeaderWidget").then((m) => ({
+      default: m.DialogHeaderWidget,
+    })),
+  ),
+  "Ivy.DialogBody": lazyWithRetry(() =>
+    import("@/widgets/dialogs/DialogBodyWidget").then((m) => ({
+      default: m.DialogBodyWidget,
+    })),
+  ),
+  "Ivy.DialogFooter": lazyWithRetry(() =>
+    import("@/widgets/dialogs/DialogFooterWidget").then((m) => ({
+      default: m.DialogFooterWidget,
+    })),
+  ),
 
   // Blades
-  "Ivy.BladeContainer": BladeContainerWidget,
-  "Ivy.Blade": BladeWidget,
+  "Ivy.BladeContainer": lazyWithRetry(() =>
+    import("@/widgets/blades/BladeContainerWidget").then((m) => ({
+      default: m.BladeContainerWidget,
+    })),
+  ),
+  "Ivy.Blade": lazyWithRetry(() =>
+    import("@/widgets/blades/BladeWidget").then((m) => ({
+      default: m.BladeWidget,
+    })),
+  ),
 
   // Tables
-  "Ivy.Table": TableWidget,
-  "Ivy.TableRow": TableRowWidget,
-  "Ivy.TableCell": TableCellWidget,
+  "Ivy.Table": lazyWithRetry(() =>
+    import("@/widgets/tables/TableWidget").then((m) => ({
+      default: m.TableWidget,
+    })),
+  ),
+  "Ivy.TableRow": lazyWithRetry(() =>
+    import("@/widgets/tables/TableRowWidget").then((m) => ({
+      default: m.TableRowWidget,
+    })),
+  ),
+  "Ivy.TableCell": lazyWithRetry(() =>
+    import("@/widgets/tables/TableCellWidget").then((m) => ({
+      default: m.TableCellWidget,
+    })),
+  ),
 
   // DataTables
   "Ivy.DataTable": lazyWithRetry(() => import("@/widgets/dataTables/DataTableWidget")),
@@ -308,7 +493,11 @@ export const widgetMap = {
       default: m.ListWidget,
     })),
   ),
-  "Ivy.ListItem": ListItemWidget,
+  "Ivy.ListItem": lazyWithRetry(() =>
+    import("@/widgets/lists/ListItemWidget").then((m) => ({
+      default: m.ListItemWidget,
+    })),
+  ),
 
   // Tree
   "Ivy.Tree": lazyWithRetry(() =>
@@ -318,8 +507,16 @@ export const widgetMap = {
   ),
 
   // Details
-  "Ivy.Details": DetailsWidget,
-  "Ivy.Detail": DetailWidget,
+  "Ivy.Details": lazyWithRetry(() =>
+    import("@/widgets/details/DetailsWidget").then((m) => ({
+      default: m.DetailsWidget,
+    })),
+  ),
+  "Ivy.Detail": lazyWithRetry(() =>
+    import("@/widgets/details/DetailWidget").then((m) => ({
+      default: m.DetailWidget,
+    })),
+  ),
 
   // Charts
   "Ivy.LineChart": lazyWithRetry(() => import("@/widgets/charts/LineChartWidget")),
