@@ -9,7 +9,9 @@
 //! [`crate::shared::ivy_node`], which builds on it to reshape a whole widget tree.
 //!
 //! All 38 Rusty widget types have an entry. `every_widget_type_is_mapped` derives its
-//! list by scanning `rusty/src/widgets/*.rs` for `"type": "..."` literals, so a widget
+//! list by scanning `rusty/src/widgets/*.rs` for both ways a widget declares its wire
+//! name -- a `"type": "..."` literal in a hand-written `to_json`, and `#[derive(Widget)]`,
+//! which emits the name from `#[widget(type = "...")]` or the struct name -- so a widget
 //! added without an entry here fails the test rather than being silently unmapped.
 
 use serde_json::Value;
@@ -197,17 +199,38 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    /// Collects every widget type name from the source of truth: the `"type": "..."`
-    /// literals in `rusty/src/widgets/*.rs`.
+    /// Collects every widget type name from the source of truth in
+    /// `rusty/src/widgets/*.rs`.
     ///
     /// The previous version of `every_widget_type_is_mapped` restated the inventory as a
     /// hardcoded 21-element `Vec` of constructors. When Plan 00037 took the widget count
     /// to 38, the test stayed green while 17 types went unmapped -- an "exhaustiveness"
     /// assertion that could not see the thing it was meant to guard. Deriving the list
     /// means a new widget cannot be added without either mapping it or failing here.
+    ///
+    /// There are now **two** ways a widget declares its wire name, and the scan has to
+    /// read both or it silently under-reports:
+    ///
+    /// 1. A `"type": "snake_case"` literal in a hand-written `to_json` body.
+    /// 2. `#[derive(Widget)]`, which emits the name instead of spelling it: either the
+    ///    `#[widget(type = "...")]` override, or `to_snake_case` of the struct name.
+    ///
+    /// Reading only (1) is what made this test fail once the derive landed -- the 12
+    /// converted widgets stopped containing the literal the scan matched on.
     fn widget_types_from_sources() -> Vec<String> {
         let widgets_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/widgets");
         let mut types = Vec::new();
+
+        let push = |name: String, types: &mut Vec<String>| {
+            // Wire names use only lowercase + underscore; anything else is
+            // interpolation or a test fixture, not a real wire type name.
+            if !name.is_empty()
+                && name.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+                && !types.contains(&name)
+            {
+                types.push(name);
+            }
+        };
 
         for entry in fs::read_dir(&widgets_dir).expect("rusty/src/widgets should be readable") {
             let path = entry.expect("dir entry should be readable").path();
@@ -215,27 +238,90 @@ mod tests {
                 continue;
             }
             let source = fs::read_to_string(&path).expect("widget source should be readable");
+
+            // `#[derive(..Widget..)]` carries the name on the struct that follows it,
+            // so the deriving lines are tracked across iterations rather than matched
+            // one line at a time.
+            let mut deriving = false;
+            let mut type_override: Option<String> = None;
+
             for line in source.lines() {
-                // Match the `"type": "snake_case"` form used in every to_json body.
-                let Some(rest) = line.split_once("\"type\": \"") else {
+                let trimmed = line.trim();
+
+                // (1) A hand-written `"type": "snake_case"` literal in a to_json body.
+                if let Some(rest) = line.split_once("\"type\": \"") {
+                    if let Some((name, _)) = rest.1.split_once('"') {
+                        push(name.to_string(), &mut types);
+                    }
+                }
+
+                // (2) `#[derive(Widget)]`, whose name lives on the struct declaration.
+                if trimmed.starts_with("#[derive(") && contains_widget_derive(trimmed) {
+                    deriving = true;
+                    type_override = None;
                     continue;
-                };
-                let Some((name, _)) = rest.1.split_once('"') else {
-                    continue;
-                };
-                // to_json bodies use only lowercase + underscore; anything else is
-                // interpolation or a test fixture, not a real wire type name.
-                if !name.is_empty()
-                    && name.chars().all(|c| c.is_ascii_lowercase() || c == '_')
-                    && !types.contains(&name.to_string())
-                {
-                    types.push(name.to_string());
+                }
+                if deriving {
+                    if let Some(name) = widget_type_attr(trimmed) {
+                        type_override = Some(name);
+                        continue;
+                    }
+                    if let Some(struct_name) = trimmed
+                        .strip_prefix("pub struct ")
+                        .or_else(|| trimmed.strip_prefix("struct "))
+                    {
+                        let struct_name = struct_name
+                            .trim_end_matches(|c: char| c == '{' || c == '(' || c.is_whitespace());
+                        let name = type_override
+                            .take()
+                            .unwrap_or_else(|| to_snake_case(struct_name));
+                        push(name, &mut types);
+                        deriving = false;
+                    } else if trimmed.starts_with("#[") || trimmed.is_empty() {
+                        // Other attributes and doc comments may sit between the derive
+                        // and the struct; keep looking.
+                    } else if !trimmed.starts_with("///") && !trimmed.starts_with("//") {
+                        deriving = false;
+                    }
                 }
             }
         }
 
         types.sort();
         types
+    }
+
+    /// Whether a `#[derive(..)]` line lists `Widget` as a whole word, so that a
+    /// hypothetical `WidgetData` or `SubWidget` derive does not read as one.
+    fn contains_widget_derive(line: &str) -> bool {
+        let Some(open) = line.find('(') else {
+            return false;
+        };
+        let inner = &line[open + 1..];
+        let inner = inner.strip_suffix(")]").unwrap_or(inner);
+        inner.split(',').any(|token| token.trim() == "Widget")
+    }
+
+    /// The `#[widget(type = "...")]` wire-name override on a deriving struct.
+    fn widget_type_attr(line: &str) -> Option<String> {
+        let rest = line.strip_prefix("#[widget(")?;
+        let rest = rest.split_once("type")?.1;
+        let rest = rest.trim_start().strip_prefix('=')?;
+        let rest = rest.trim_start().strip_prefix('"')?;
+        rest.split_once('"').map(|(name, _)| name.to_string())
+    }
+
+    /// Mirrors `rusty_macros`' own `to_snake_case`, which is what the derive uses to
+    /// turn a struct name into a wire type when there is no explicit override.
+    fn to_snake_case(s: &str) -> String {
+        let mut result = String::new();
+        for (i, ch) in s.chars().enumerate() {
+            if ch.is_uppercase() && i > 0 {
+                result.push('_');
+            }
+            result.push(ch.to_lowercase().next().unwrap());
+        }
+        result
     }
 
     #[test]
