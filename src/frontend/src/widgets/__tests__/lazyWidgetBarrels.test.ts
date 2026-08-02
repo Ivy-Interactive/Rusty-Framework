@@ -45,10 +45,19 @@ for (const file of files) {
   staticEdges.set(file, edges);
 }
 
+/** Drop whole-line comments. `import("...")` is matched anywhere on a line, unlike the
+ * static form which is anchored to the start, so widgetMap.ts's own doc comments would
+ * otherwise contribute specifiers - including the `@/widgets/<dir>/<Widget>` placeholder. */
+const stripComments = (src: string) =>
+  src
+    .split("\n")
+    .filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
+    .join("\n");
+
 /** Modules widgetMap.ts expects to be code-split: resolved file -> its specifier. */
 const lazyModules = new Map<string, string>();
 const dynamicSpecifiers = [
-  ...readFileSync(widgetMapPath, "utf8").matchAll(/import\("(@\/[^"]+)"\)/g),
+  ...stripComments(readFileSync(widgetMapPath, "utf8")).matchAll(/import\("(@\/[^"]+)"\)/g),
 ].map((m) => m[1]);
 for (const specifier of dynamicSpecifiers) {
   const target = resolveFrom(widgetMapPath, specifier);
@@ -81,10 +90,14 @@ it("keeps every lazy widget module out of the eager module graph", () => {
   }
   // Guard against the assertion going vacuous: if the walk stops short of widgetMap.ts
   // (a renamed entry, a moved file, a regex that stops matching) nothing above can fail.
+  // This is the load-bearing anti-vacuity check; a stubbed entry reaches 1 file and fails here.
   expect(
     paths.has(widgetMapPath),
     `the eager walk from ${rel(entry)} never reached widgets/widgetMap.ts`,
   ).toBe(true);
-  expect(paths.size).toBeGreaterThan(100);
+  // Deliberately loose. The eager graph is *meant* to shrink as widgets are lazified: it was 199
+  // files before 55 widgets moved to import() and is 53 now, so a tight floor here would fail the
+  // next lazification rather than a broken walk. Keep it well under the current figure.
+  expect(paths.size).toBeGreaterThan(25);
   expect(offenders, `\n${offenders.join("\n")}\n`).toEqual([]);
 });
