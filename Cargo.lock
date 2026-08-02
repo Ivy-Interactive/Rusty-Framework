@@ -774,6 +774,7 @@ dependencies = [
  "axum",
  "bytes",
  "futures",
+ "rusty-filter",
  "rusty-macros",
  "serde",
  "serde_json",
