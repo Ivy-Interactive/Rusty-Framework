@@ -56,6 +56,7 @@ Rusty-Framework follows the same architecture as Ivy-Framework:
 |-------|-------------|
 | `rusty` | Core framework — views, hooks, widgets, server, shared types |
 | `rusty-macros` | Proc macros for `#[derive(Widget)]`, `#[prop]`, `#[event]` |
+| `rusty-ivyml` | Proc macros for `ivyml!` / `ivyml_file!` declarative markup |
 | `rusty-server` | Standalone server binary |
 
 ## Examples
