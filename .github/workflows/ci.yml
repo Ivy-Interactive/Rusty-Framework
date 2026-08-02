@@ -40,8 +40,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: cargo fmt --all -- --check
 
+      - name: Pre-commit hook harness
+        if: ${{ !cancelled() }}
+        run: sh ./scripts/test-precommit-hook.sh
+
   alert-on-red-main:
-    needs: build
+    needs: [build, frontend, renovate-liveness, e2e]
     if: ${{ failure() && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
@@ -103,8 +107,14 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      - name: Bundle budget
+        run: pnpm run check:bundle
+
       - name: Test
         run: pnpm test
+
+      - name: Format check
+        run: pnpm format:check
 
   renovate-liveness:
     runs-on: ubuntu-latest
