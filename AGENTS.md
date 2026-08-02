@@ -82,7 +82,8 @@ Git hooks are husky (`.husky/pre-commit` + `package.json`'s `lint-staged`). Vite
 ## CI
 
 `.github/workflows/ci.yml` runs build, test, clippy, `cargo fmt --all -- --check`,
-frontend checks, and renovate-liveness on every push to `main` and every PR. All checks
+a test-inventory check (see below), frontend checks, and renovate-liveness on every
+push to `main` and every PR. All checks
 report independently — a failure in one does not skip the rest. When any of those jobs fails on a push to `main`, `alert-on-red-main` opens or comments on a `ci-red` issue - it depends on all of them, so no job's failure is silent. A weekly `cargo-majors` job (`schedule`, plus `workflow_dispatch`) reports Cargo dependencies whose latest stable release is outside the major series declared in the manifests. It is report-only. This exists because `renovate.json` parks all cargo updates, and Renovate omits parked dependencies from the Dependency Dashboard entirely - a parked major is invisible, not a checkbox. As of 2026-08-02: `syn` `^2` -> 3.0.3, `tower-http` `^0.6` -> 0.7.0, `tokio-tungstenite` `^0.29` -> 0.30.0.
 
 `main` has no branch protection and no rulesets:
@@ -102,6 +103,40 @@ will not stop this: `--admin` bypasses requirements for admins. The fix needs
 `cargo fmt --all -- --check` needs a prior `cargo build`: `rusty-docs/src/generated/`
 is gitignored and emitted by `rusty-docs/build.rs`, so rustfmt fails to resolve
 `mod generated` on a clean checkout.
+
+### The Test inventory gate
+
+`scripts/check-test-inventory.sh <base-ref>` fails when a test that exists at `<base-ref>`
+is gone from the working tree. It runs as the `Test inventory` step of the `build` job,
+against `github.event.pull_request.base.sha` on a PR and `github.event.before` on a push
+to `main`.
+
+None of the other four cargo gates can see a deleted test — a test module removed wholesale
+takes its own assertions with it. Measured by deleting the 8-test `#[cfg(test)]` module from
+`rusty/src/server/ws.rs`: `cargo build`, `cargo test` (384 passed, down from 392),
+`cargo clippy -- -D warnings` and `cargo fmt -- --check` all exit **0**. The new gate exits 1
+and names all 8. **It compares names, not counts**, because the merge that motivated it
+(`53dff77`) deleted 36 tests while raising the workspace total from 222 to 266 — a
+"tests must not decrease" check passes it.
+
+Deleting a test is legitimate. The gate reports names for a human to judge rather than
+blocking renames, and since `main` has no branch protection (see above) it informs rather
+than blocks: **rename, move or drop a test on purpose and say so in the commit message.**
+What it exists to catch is the test module that vanishes while someone hand-resolves a merge
+conflict and commits without re-running the gates.
+
+Two things it needs, both of which fail silently if you drop them:
+
+- **`fetch-depth: 0` on the `build` job's checkout.** The script extracts the base with
+  `git archive`, which fails with `not a valid object name` on the default shallow clone.
+- **Its own `CARGO_TARGET_DIR` for the base tree**, which the script sets. `rusty-docs/build.rs`
+  only reruns when the target dir holds no cached fingerprint, so sharing a warm one makes the
+  base tree fail `E0583: file not found for module 'generated'`.
+
+`scripts/test-check-test-inventory.sh` is its harness (the `Test-inventory gate harness` step):
+6 black-box cases over a throwaway cargo workspace, including a base tree that does not compile
+— the case where an earlier prototype printed `0 tests at <base>` and exited 0 on a tree it had
+never inspected.
 
 `cargo test --workspace` now asserts `e2e/app/index.html` is structurally loadable (matching script tag count, brace balance, no duplicate case labels), which catches breakages a `pageerror`-only check misses — a duplicated `</script>` throws no pageerror yet renders half the code as page text.
 

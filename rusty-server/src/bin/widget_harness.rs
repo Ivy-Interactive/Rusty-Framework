@@ -369,44 +369,6 @@ impl View for DownloadsApp {
     }
 }
 
-/// Exercises `use_download_stream` and `use_download_bytes`.
-///
-/// Both URLs start as `None` and are filled in by the mount effect, so they
-/// arrive over the WebSocket push path rather than in the first render. The
-/// URLs render as `code` text blocks because there is no anchor widget — the
-/// spec reads them out of the DOM and fetches them itself.
-struct DownloadsApp;
-
-impl View for DownloadsApp {
-    fn build(&self, ctx: &mut BuildContext) -> Element {
-        let stream_url = use_download_stream(
-            ctx,
-            || async {
-                Ok(futures::stream::iter(vec![
-                    Ok(bytes::Bytes::from("chunk-1;")),
-                    Ok(bytes::Bytes::from("chunk-2;")),
-                    Ok(bytes::Bytes::from("chunk-3;")),
-                ]))
-            },
-            "text/csv",
-            "stream-export.csv",
-        );
-        let bytes_url = use_download_bytes(
-            ctx,
-            b"buffered-body".to_vec(),
-            "application/json",
-            "buffered.json",
-        );
-
-        Layout::vertical()
-            .gap(16.0)
-            .child(TextBlock::h1("Downloads Test"))
-            .child(TextBlock::code(&stream_url.get().unwrap_or_default()))
-            .child(TextBlock::code(&bytes_url.get().unwrap_or_default()))
-            .into()
-    }
-}
-
 /// Exercises `use_query`. The fetcher sleeps, so the loading-to-loaded
 /// transition arrives over the WebSocket push path rather than in the first
 /// render.
@@ -1203,7 +1165,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // unknown-widget arm to write.
     let widget = cli.widget;
     let static_dir = cli.static_dir;
-let server = RustyServer::new(cli.port, move || HarnessApp(widget));
+    let server = RustyServer::new(cli.port, move || HarnessApp(widget));
 
     let server = if let Some(dir) = static_dir {
         server.with_static_dir(dir)
@@ -1220,15 +1182,20 @@ mod tests {
     use rusty::core::query_cache::QueryService;
     use rusty::core::services::{AppContext, ServiceRegistry};
     use rusty::hooks::hook_store::HookStore;
+    use rusty::server::download::DownloadService;
     use rusty::shared::ViewId;
     use std::sync::Arc;
 
     /// The harness apps are served by `AppSessionStore::create_session`, which
-    /// registers these services. `use_query` panics without them.
+    /// registers these services. `use_query` panics without them, and so does
+    /// `use_download_stream` -- keep this list in step with the `register` calls
+    /// in `rusty/src/server/session.rs`, or adding a harness app that uses a new
+    /// hook fails `all_widget_kinds_build_a_tree` rather than the app itself.
     fn harness_services() -> Arc<ServiceRegistry> {
         let services = Arc::new(ServiceRegistry::new());
         services.register(Arc::new(AppContext::new("test-connection")));
         services.register(Arc::new(QueryService::new()));
+        services.register(Arc::new(DownloadService::new("test-connection")));
         services
     }
 
