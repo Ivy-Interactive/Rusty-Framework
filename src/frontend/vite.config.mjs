@@ -89,7 +89,8 @@ const mode = process.env.NODE_ENV || "development";
 
 /**
  * Fails the build when a dynamically imported first-party module lands in a chunk that is also
- * statically imported - the code-split is defeated and the module ships in the eager graph.
+ * statically imported, or when it is merged into the entry chunk - in both cases the code-split
+ * is defeated and the module ships in the eager graph.
  *
  * This replaces a plugin that promoted Rolldown's INEFFECTIVE_DYNAMIC_IMPORT warning: that warning
  * is never emitted on vite-plus 0.2.7, so the gate was silent while both known bug shapes built
@@ -121,7 +122,7 @@ const assertLazyChunks = {
     const violations = [];
     for (const target of dynamicTargets) {
       const chunk = chunkOfModule.get(target);
-      if (chunk && staticallyImported.has(chunk)) {
+      if (chunk && (staticallyImported.has(chunk) || bundle[chunk]?.isEntry)) {
         violations.push(`  - ${path.relative(__dirname, target).replace(/\\/g, "/")} -> ${chunk}`);
       }
     }

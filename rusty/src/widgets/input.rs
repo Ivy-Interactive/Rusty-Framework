@@ -1,6 +1,7 @@
 use crate::core::event_registry::EventRegistry;
 use crate::views::view::{BuildContext, Element, WidgetData};
 use crate::widgets::separator::Orientation;
+use rusty_macros::Widget;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -1214,17 +1215,26 @@ impl From<RadioGroup> for Element {
 }
 
 /// A [`Select`] permitting several simultaneous selections.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Widget)]
 pub struct MultiSelect {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    #[prop]
     pub options: Vec<SelectOption>,
+    #[prop]
     pub values: Vec<String>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    #[prop]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub placeholder: Option<String>,
+    #[prop]
     pub disabled: bool,
+    // The client sends every selected option as a JSON array in `value`,
+    // matching the single-value shape of the other inputs. Deserializing into
+    // `Vec<String>` rejects a scalar rather than coercing it to one element.
+    #[event(arg = "value")]
     #[serde(skip)]
     pub on_change: Option<Arc<dyn Fn(Vec<String>) + Send + Sync>>,
 }
@@ -1278,59 +1288,6 @@ impl MultiSelect {
 
     pub fn into_element(self) -> Element {
         Element::Widget(Box::new(self))
-    }
-}
-
-impl WidgetData for MultiSelect {
-    fn widget_type(&self) -> &str {
-        "multi_select"
-    }
-
-    fn to_json(&self) -> serde_json::Value {
-        json!({
-            "type": "multi_select",
-            "id": self.id,
-            "options": self.options,
-            "values": self.values,
-            "label": self.label,
-            "placeholder": self.placeholder,
-            "disabled": self.disabled,
-            "hasOnChange": self.on_change.is_some(),
-        })
-    }
-
-    fn clone_box(&self) -> Box<dyn WidgetData> {
-        Box::new(self.clone())
-    }
-
-    fn assign_id(&mut self, id: String) {
-        self.id = Some(id);
-    }
-
-    fn get_id(&self) -> Option<&str> {
-        self.id.as_deref()
-    }
-
-    fn register_events(&self, widget_id: &str, registry: &mut EventRegistry) {
-        if let Some(handler) = &self.on_change {
-            let handler = handler.clone();
-            registry.register(
-                widget_id,
-                "change",
-                Arc::new(move |args| {
-                    // The client sends every selected option as a JSON array in
-                    // `value`, matching the single-value shape of the other inputs.
-                    if let Some(values) = args.get("value").and_then(|v| v.as_array()) {
-                        handler(
-                            values
-                                .iter()
-                                .filter_map(|v| v.as_str().map(str::to_string))
-                                .collect(),
-                        );
-                    }
-                }),
-            );
-        }
     }
 }
 
