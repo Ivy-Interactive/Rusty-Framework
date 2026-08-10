@@ -55,7 +55,7 @@ const RESERVED_KEYS: [&str; 5] = ["type", "id", "children", "child", "kind"];
 
 /// The Ivy event names that some widget under `src/frontend/src/widgets/` actually
 /// reads via `events.includes(...)`. Derived from Rusty's `has<Event>` booleans, but
-/// deliberately **not** a blanket `has` strip: Rusty emits four flags Ivy has nowhere
+/// deliberately **not** a blanket `has` strip: Rusty emits several flags Ivy has nowhere
 /// to land, and emitting them would suggest a handler Ivy will never invoke.
 ///
 /// Dropped, with the reason each is unreachable:
@@ -66,17 +66,24 @@ const RESERVED_KEYS: [&str; 5] = ["type", "id", "children", "child", "kind"];
 ///   `id, disabled, open, density, icon, ghost, slots` and no `events`.
 /// - `OnDayClick` -- from `activity_heatmap`, which is `IvyWidget::RustOnly`.
 /// - `OnLineClick` -- from `diff_view`, which is `IvyWidget::RustOnly`.
+/// - `OnCapture` -- from `audio_input` and `camera_input`. Both Ivy widgets upload the
+///   recording themselves to `uploadUrl` and read only `OnFocus`/`OnBlur`, so there is
+///   no event through which Ivy would hand a capture back.
+/// - `OnSign`, `OnClear` -- from `signature_input`. `SignatureInputWidget.tsx` reports
+///   both through `OnChange` instead: the signature as base64, a clear as `null`.
 ///
 /// If a future Ivy sync adds one of them, add it here; `unreadable_events_are_dropped`
 /// pins the current set so the divergence is noticed rather than assumed.
-pub const IVY_EVENT_NAMES: [&str; 8] = [
+pub const IVY_EVENT_NAMES: [&str; 10] = [
     "OnBlur",
+    "OnCancel",
     "OnCellClick",
     "OnChange",
     "OnClick",
     "OnFocus",
     "OnLinkClick",
     "OnRowAction",
+    "OnSend",
     "OnSubmit",
 ];
 
@@ -84,7 +91,18 @@ pub const IVY_EVENT_NAMES: [&str; 8] = [
 ///
 /// The rule is an allow-list rather than a blanket transform because most props carry
 /// user text: title-casing `content` or `title` would corrupt it.
-const ENUM_PROPS: [&str; 5] = ["variant", "direction", "density", "color", "orientation"];
+///
+/// `facingMode` is deliberately absent even though [`crate::widgets::FacingMode`] is an
+/// enum: `CameraInputWidget` feeds the value straight to `getUserMedia`, which only
+/// accepts lowercase `"user"` / `"environment"`.
+const ENUM_PROPS: [&str; 6] = [
+    "variant",
+    "direction",
+    "density",
+    "color",
+    "orientation",
+    "sender",
+];
 
 /// Maps a Rusty camelCase enum prop value onto Ivy's spelling, for the pairs that
 /// differ by more than case.
@@ -361,6 +379,62 @@ mod tests {
         // OnLinkClick is read by Markdown/RichTextBlock, so it survives the filter
         // even though TerminalWidget itself ignores it.
         assert!(events.iter().any(|e| e == "OnLinkClick"));
+    }
+
+    #[test]
+    fn chat_send_and_cancel_events_survive() {
+        let chat = Chat::new().on_send(|_| {}).on_cancel(|| {}).to_json();
+        let node = to_ivy_node(&chat).expect("chat maps to Ivy.Chat");
+
+        assert_eq!(node["type"], "Ivy.Chat");
+        // ChatWidget.tsx reads both via events.includes(...), so neither is filtered.
+        assert_eq!(node["events"], json!(["OnCancel", "OnSend"]));
+    }
+
+    #[test]
+    fn chat_message_sender_is_title_cased() {
+        let message = ChatMessage::user(TextBlock::new("hi")).to_json();
+        assert_eq!(message["sender"], "user", "Rust still sends camelCase");
+
+        let node = to_ivy_node(&message).expect("chat_message maps to Ivy.ChatMessage");
+        // ChatMessageWidgetProps.sender is "User" | "Assistant".
+        assert_eq!(node["props"]["sender"], "User");
+
+        let assistant = to_ivy_node(&ChatMessage::assistant(TextBlock::new("yo")).to_json())
+            .expect("chat_message maps");
+        assert_eq!(assistant["props"]["sender"], "Assistant");
+    }
+
+    #[test]
+    fn camera_facing_mode_stays_lower_case() {
+        // getUserMedia rejects "Environment"; facingMode is not in ENUM_PROPS for
+        // exactly this reason.
+        let camera = CameraInput::new()
+            .facing_mode(FacingMode::Environment)
+            .to_json();
+        let node = to_ivy_node(&camera).expect("camera_input maps to Ivy.CameraInput");
+        assert_eq!(node["props"]["facingMode"], "environment");
+    }
+
+    #[test]
+    fn capture_and_signature_events_are_dropped() {
+        let audio = AudioInput::new()
+            .on_capture(|_| {})
+            .on_focus(|| {})
+            .to_json();
+        assert_eq!(audio["hasOnCapture"], true);
+        let node = to_ivy_node(&audio).expect("audio_input maps to Ivy.AudioInput");
+        assert_eq!(node["events"], json!(["OnFocus"]));
+
+        let signature = SignatureInput::new()
+            .on_sign(|_| {})
+            .on_clear(|| {})
+            .to_json();
+        assert_eq!(signature["hasOnSign"], true);
+        assert_eq!(signature["hasOnClear"], true);
+        let node = to_ivy_node(&signature).expect("signature_input maps");
+        // SignatureInputWidget reports both through OnChange, which Rust never sets here.
+        assert_eq!(node["events"], json!([]));
     }
 
     #[test]

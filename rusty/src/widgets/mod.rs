@@ -4,6 +4,7 @@ pub mod badge;
 pub mod button;
 pub mod callout;
 pub mod card;
+pub mod chat;
 pub mod container;
 pub mod data_table;
 #[cfg(test)]
@@ -17,6 +18,7 @@ pub mod image;
 pub mod input;
 pub mod layout;
 pub mod list;
+pub mod media_inputs;
 pub mod progress;
 pub mod qr_code;
 pub mod rich_text_input;
@@ -34,6 +36,7 @@ pub use badge::Badge;
 pub use button::Button;
 pub use callout::{Callout, CalloutVariant};
 pub use card::Card;
+pub use chat::{Chat, ChatLoading, ChatMessage, ChatSender, ChatStatus};
 pub use container::Container;
 pub use data_table::{
     CellClickArgs, ColType, DataTable, DataTableColumn, DataTableConfig, RowActionArgs,
@@ -51,6 +54,7 @@ pub use input::{
 };
 pub use layout::Layout;
 pub use list::{List, ListItem};
+pub use media_inputs::{AudioInput, CameraInput, CaptureMode, FacingMode, SignatureInput};
 pub use progress::Progress;
 pub use qr_code::{QrCode, QrErrorCorrectionLevel};
 pub use rich_text_input::RichTextInput;

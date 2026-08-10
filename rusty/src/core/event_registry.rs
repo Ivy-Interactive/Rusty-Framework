@@ -17,6 +17,11 @@ pub enum EventName {
     Focus,
     Blur,
     Toggle,
+    Send,
+    Cancel,
+    Capture,
+    Sign,
+    Clear,
 }
 
 impl EventName {
@@ -35,6 +40,11 @@ impl EventName {
             EventName::Focus => "focus",
             EventName::Blur => "blur",
             EventName::Toggle => "toggle",
+            EventName::Send => "send",
+            EventName::Cancel => "cancel",
+            EventName::Capture => "capture",
+            EventName::Sign => "sign",
+            EventName::Clear => "clear",
         }
     }
 
@@ -56,6 +66,11 @@ impl EventName {
             "focus" => Some(EventName::Focus),
             "blur" => Some(EventName::Blur),
             "toggle" => Some(EventName::Toggle),
+            "send" => Some(EventName::Send),
+            "cancel" => Some(EventName::Cancel),
+            "capture" => Some(EventName::Capture),
+            "sign" => Some(EventName::Sign),
+            "clear" => Some(EventName::Clear),
             _ => None,
         }
     }
@@ -210,6 +225,11 @@ mod tests {
             EventName::Focus,
             EventName::Blur,
             EventName::Toggle,
+            EventName::Send,
+            EventName::Cancel,
+            EventName::Capture,
+            EventName::Sign,
+            EventName::Clear,
         ];
 
         for event in all {
@@ -235,6 +255,20 @@ mod tests {
 
         // A leading `on` that is not a handler prefix must not be stripped.
         assert_eq!(EventName::from_str("online"), None);
+    }
+
+    #[test]
+    fn test_from_str_parses_chat_and_capture_events() {
+        assert_eq!(EventName::from_str("send"), Some(EventName::Send));
+        assert_eq!(EventName::from_str("onSend"), Some(EventName::Send));
+        assert_eq!(EventName::from_str("cancel"), Some(EventName::Cancel));
+        assert_eq!(EventName::from_str("onCancel"), Some(EventName::Cancel));
+        assert_eq!(EventName::from_str("capture"), Some(EventName::Capture));
+        assert_eq!(EventName::from_str("onCapture"), Some(EventName::Capture));
+        assert_eq!(EventName::from_str("sign"), Some(EventName::Sign));
+        assert_eq!(EventName::from_str("onSign"), Some(EventName::Sign));
+        assert_eq!(EventName::from_str("clear"), Some(EventName::Clear));
+        assert_eq!(EventName::from_str("onClear"), Some(EventName::Clear));
     }
 
     #[test]

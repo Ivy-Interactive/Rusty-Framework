@@ -8,7 +8,7 @@
 //! `src/frontend` to a Rusty server. Nothing in Rusty consumes this today, except
 //! [`crate::shared::ivy_node`], which builds on it to reshape a whole widget tree.
 //!
-//! All 38 Rusty widget types have an entry. `every_widget_type_is_mapped` derives its
+//! All 45 Rusty widget types have an entry. `every_widget_type_is_mapped` derives its
 //! list by scanning `rusty/src/widgets/*.rs` for both ways a widget declares its wire
 //! name -- a `"type": "..."` literal in a hand-written `to_json`, and `#[derive(Widget)]`,
 //! which emits the name from `#[widget(type = "...")]` or the struct name -- so a widget
@@ -79,12 +79,18 @@ pub enum IvyWidget {
 /// ```
 pub fn ivy_widget(rusty_type: &str) -> Option<IvyWidget> {
     match rusty_type {
-        // Mechanical snake_case → Ivy.PascalCase mappings (25 widgets)
+        // Mechanical snake_case → Ivy.PascalCase mappings (32 widgets)
+        "audio_input" => Some(IvyWidget::One("Ivy.AudioInput")),
         "avatar" => Some(IvyWidget::One("Ivy.Avatar")),
         "badge" => Some(IvyWidget::One("Ivy.Badge")),
         "button" => Some(IvyWidget::One("Ivy.Button")),
         "callout" => Some(IvyWidget::One("Ivy.Callout")),
+        "camera_input" => Some(IvyWidget::One("Ivy.CameraInput")),
         "card" => Some(IvyWidget::One("Ivy.Card")),
+        "chat" => Some(IvyWidget::One("Ivy.Chat")),
+        "chat_loading" => Some(IvyWidget::One("Ivy.ChatLoading")),
+        "chat_message" => Some(IvyWidget::One("Ivy.ChatMessage")),
+        "chat_status" => Some(IvyWidget::One("Ivy.ChatStatus")),
         "color_input" => Some(IvyWidget::One("Ivy.ColorInput")),
         "data_table" => Some(IvyWidget::One("Ivy.DataTable")),
         "dialog" => Some(IvyWidget::One("Ivy.Dialog")),
@@ -98,6 +104,7 @@ pub fn ivy_widget(rusty_type: &str) -> Option<IvyWidget> {
         "number_input" => Some(IvyWidget::One("Ivy.NumberInput")),
         "progress" => Some(IvyWidget::One("Ivy.Progress")),
         "separator" => Some(IvyWidget::One("Ivy.Separator")),
+        "signature_input" => Some(IvyWidget::One("Ivy.SignatureInput")),
         "skeleton" => Some(IvyWidget::One("Ivy.Skeleton")),
         "spacer" => Some(IvyWidget::One("Ivy.Spacer")),
         "table" => Some(IvyWidget::One("Ivy.Table")),
@@ -332,8 +339,8 @@ mod tests {
         // style, a moved directory): an empty or tiny list would pass vacuously,
         // which is the exact failure this test was rewritten to eliminate.
         assert!(
-            types.len() >= 38,
-            "expected at least 38 widget types scanned from rusty/src/widgets, found {}: {:?}. \
+            types.len() >= 45,
+            "expected at least 45 widget types scanned from rusty/src/widgets, found {}: {:?}. \
              If the to_json `\"type\": \"...\"` convention changed, fix this scan.",
             types.len(),
             types
@@ -376,11 +383,17 @@ mod tests {
         // still cannot drift.
         let widgets: Vec<Box<dyn WidgetData>> = vec![
             Box::new(ActivityHeatmap::new()),
+            Box::new(AudioInput::new()),
             Box::new(Avatar::new("AB")),
             Box::new(Badge::new("test")),
             Box::new(Button::new("test")),
             Box::new(Callout::new()),
+            Box::new(CameraInput::new()),
             Box::new(Card::new()),
+            Box::new(Chat::new()),
+            Box::new(ChatLoading::new()),
+            Box::new(ChatMessage::default()),
+            Box::new(ChatStatus::new("test")),
             Box::new(Checkbox::new(false)),
             Box::new(ColorInput::new()),
             Box::new(Container::new()),
@@ -404,6 +417,7 @@ mod tests {
             Box::new(RichTextInput::new()),
             Box::new(Select::new(vec![])),
             Box::new(Separator::horizontal()),
+            Box::new(SignatureInput::new()),
             Box::new(Skeleton::new()),
             Box::new(Slider::new(0.0)),
             Box::new(Spacer::new()),
@@ -417,8 +431,8 @@ mod tests {
 
         assert_eq!(
             widgets.len(),
-            38,
-            "constructed-widget list drifted from the 38 widget types"
+            45,
+            "constructed-widget list drifted from the 45 widget types"
         );
 
         for widget in widgets {
@@ -542,6 +556,27 @@ mod tests {
     fn unknown_type_is_none() {
         assert_eq!(ivy_widget("not_a_widget"), None);
         assert_eq!(ivy_widget(""), None);
+    }
+
+    #[test]
+    fn chat_and_media_input_types_map_mechanically() {
+        for (rusty_type, expected) in [
+            ("chat", "Ivy.Chat"),
+            ("chat_message", "Ivy.ChatMessage"),
+            ("chat_loading", "Ivy.ChatLoading"),
+            ("chat_status", "Ivy.ChatStatus"),
+            ("audio_input", "Ivy.AudioInput"),
+            ("camera_input", "Ivy.CameraInput"),
+            ("signature_input", "Ivy.SignatureInput"),
+        ] {
+            assert_eq!(
+                ivy_widget(rusty_type),
+                Some(IvyWidget::One(expected)),
+                "{} should map to {}",
+                rusty_type,
+                expected
+            );
+        }
     }
 
     #[test]
