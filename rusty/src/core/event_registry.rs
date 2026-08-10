@@ -76,9 +76,14 @@ impl EventName {
     }
 
     /// Strip a leading `on` handler prefix and lowercase the rest, so
-    /// `onCellClick`, `cellClick` and `cellclick` all normalize alike.
+    /// `OnCellClick`, `onCellClick`, `cellClick` and `cellclick` all normalize
+    /// alike. `On` is accepted as well as `on` because that is the casing the
+    /// Ivy React widgets send — `ChatWidget.tsx` calls
+    /// `eventHandler("OnSend", ..)`, `ButtonWidget.tsx` calls it with
+    /// `"OnClick"` — while the E2E renderer sends the lowercase form.
     fn normalize(s: &str) -> String {
         s.strip_prefix("on")
+            .or_else(|| s.strip_prefix("On"))
             .filter(|rest| rest.starts_with(|c: char| c.is_ascii_uppercase()))
             .unwrap_or(s)
             .to_ascii_lowercase()
@@ -255,6 +260,7 @@ mod tests {
 
         // A leading `on` that is not a handler prefix must not be stripped.
         assert_eq!(EventName::from_str("online"), None);
+        assert_eq!(EventName::from_str("Online"), None);
     }
 
     #[test]
@@ -269,6 +275,22 @@ mod tests {
         assert_eq!(EventName::from_str("onSign"), Some(EventName::Sign));
         assert_eq!(EventName::from_str("clear"), Some(EventName::Clear));
         assert_eq!(EventName::from_str("onClear"), Some(EventName::Clear));
+
+        // The Ivy React widgets send the `On` form, so it must parse too.
+        assert_eq!(EventName::from_str("OnSend"), Some(EventName::Send));
+        assert_eq!(EventName::from_str("OnCapture"), Some(EventName::Capture));
+
+        // Whichever spelling arrives, the registered lowercase name is what
+        // `dispatch` looks the handler up under.
+        for name in ["send", "onSend", "OnSend"] {
+            assert_eq!(EventName::canonicalize(name), "send");
+        }
+        for name in ["capture", "onCapture", "OnCapture"] {
+            assert_eq!(EventName::canonicalize(name), "capture");
+        }
+        assert_eq!(EventName::canonicalize("OnCancel"), "cancel");
+        assert_eq!(EventName::canonicalize("OnSign"), "sign");
+        assert_eq!(EventName::canonicalize("OnClear"), "clear");
     }
 
     #[test]
