@@ -12,6 +12,7 @@ pub mod data_table;
 mod derive_tests;
 pub mod dialog;
 pub mod diff_view;
+pub mod effects;
 pub mod expandable;
 pub mod form;
 pub mod icon_widget;
@@ -31,6 +32,7 @@ pub mod terminal;
 pub mod text;
 pub mod toolbar;
 pub mod tooltip;
+pub mod wireframe;
 
 pub use activity_heatmap::{Activity, ActivityHeatmap, ActivityInterval};
 pub use avatar::Avatar;
@@ -47,6 +49,9 @@ pub use data_table::{
 };
 pub use dialog::Dialog;
 pub use diff_view::{DiffView, DiffViewType};
+pub use effects::{
+    Animation, AnimationDirection, AnimationEasing, AnimationType, Confetti, EffectTrigger,
+};
 pub use expandable::Expandable;
 pub use form::{Field, Form};
 pub use icon_widget::IconWidget;
@@ -58,7 +63,7 @@ pub use input::{
 pub use layout::Layout;
 pub use list::{List, ListItem};
 pub use pagination::Pagination;
-pub use progress::Progress;
+pub use progress::{Progress, ProgressSegment, StackedProgress};
 pub use qr_code::{QrCode, QrErrorCorrectionLevel};
 pub use rich_text_input::RichTextInput;
 pub use separator::{Orientation, Separator};
@@ -69,3 +74,4 @@ pub use terminal::{CursorStyle, Terminal, TerminalSize};
 pub use text::TextBlock;
 pub use toolbar::{Toolbar, ToolbarItem, ToolbarItemVariant};
 pub use tooltip::Tooltip;
+pub use wireframe::{WireframeCallout, WireframeNote};

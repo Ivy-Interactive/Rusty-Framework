@@ -8,7 +8,7 @@
 //! `src/frontend` to a Rusty server. Nothing in Rusty consumes this today, except
 //! [`crate::shared::ivy_node`], which builds on it to reshape a whole widget tree.
 //!
-//! All 43 Rusty widget types have an entry. `every_widget_type_is_mapped` derives its
+//! All 48 Rusty widget types have an entry. `every_widget_type_is_mapped` derives its
 //! list by scanning `rusty/src/widgets/*.rs` for both ways a widget declares its wire
 //! name -- a `"type": "..."` literal in a hand-written `to_json`, and `#[derive(Widget)]`,
 //! which emits the name from `#[widget(type = "...")]` or the struct name -- so a widget
@@ -79,7 +79,8 @@ pub enum IvyWidget {
 /// ```
 pub fn ivy_widget(rusty_type: &str) -> Option<IvyWidget> {
     match rusty_type {
-        // Mechanical snake_case → Ivy.PascalCase mappings (30 widgets)
+        // Mechanical snake_case → Ivy.PascalCase mappings (33 widgets)
+        "animation" => Some(IvyWidget::One("Ivy.Animation")),
         "avatar" => Some(IvyWidget::One("Ivy.Avatar")),
         "badge" => Some(IvyWidget::One("Ivy.Badge")),
         "blade" => Some(IvyWidget::One("Ivy.Blade")),
@@ -89,6 +90,7 @@ pub fn ivy_widget(rusty_type: &str) -> Option<IvyWidget> {
         "callout" => Some(IvyWidget::One("Ivy.Callout")),
         "card" => Some(IvyWidget::One("Ivy.Card")),
         "color_input" => Some(IvyWidget::One("Ivy.ColorInput")),
+        "confetti" => Some(IvyWidget::One("Ivy.Confetti")),
         "data_table" => Some(IvyWidget::One("Ivy.DataTable")),
         "dialog" => Some(IvyWidget::One("Ivy.Dialog")),
         "expandable" => Some(IvyWidget::One("Ivy.Expandable")),
@@ -104,6 +106,7 @@ pub fn ivy_widget(rusty_type: &str) -> Option<IvyWidget> {
         "separator" => Some(IvyWidget::One("Ivy.Separator")),
         "skeleton" => Some(IvyWidget::One("Ivy.Skeleton")),
         "spacer" => Some(IvyWidget::One("Ivy.Spacer")),
+        "stacked_progress" => Some(IvyWidget::One("Ivy.StackedProgress")),
         "table" => Some(IvyWidget::One("Ivy.Table")),
         "terminal" => Some(IvyWidget::One("Ivy.Terminal")),
         "text_block" => Some(IvyWidget::One("Ivy.TextBlock")),
@@ -130,7 +133,7 @@ pub fn ivy_widget(rusty_type: &str) -> Option<IvyWidget> {
             value: "Textarea",
         }),
 
-        // Rust-only widgets with no Ivy counterpart (7)
+        // Rust-only widgets with no Ivy counterpart (9)
         // - activity_heatmap: no heatmap widget in widgetMap.ts
         // - diff_view: no diff widget in widgetMap.ts
         // - multi_select: no Ivy.MultiSelect; Ivy.SelectInput is single-value
@@ -139,6 +142,8 @@ pub fn ivy_widget(rusty_type: &str) -> Option<IvyWidget> {
         // - rich_text_input: Ivy.RichTextBlock is read-only; Ivy.ContentInput
         //   and Ivy.CodeInput are different widgets
         // - slider: no Ivy.Slider in widgetMap.ts
+        // - wireframe_callout / wireframe_note: no counterpart anywhere in
+        //   widgetMap.ts; these annotate designs and have no rendered Ivy form.
         "activity_heatmap" => Some(IvyWidget::RustOnly),
         "diff_view" => Some(IvyWidget::RustOnly),
         "multi_select" => Some(IvyWidget::RustOnly),
@@ -146,6 +151,8 @@ pub fn ivy_widget(rusty_type: &str) -> Option<IvyWidget> {
         "radio_group" => Some(IvyWidget::RustOnly),
         "rich_text_input" => Some(IvyWidget::RustOnly),
         "slider" => Some(IvyWidget::RustOnly),
+        "wireframe_callout" => Some(IvyWidget::RustOnly),
+        "wireframe_note" => Some(IvyWidget::RustOnly),
 
         _ => None,
     }
@@ -337,8 +344,8 @@ mod tests {
         // style, a moved directory): an empty or tiny list would pass vacuously,
         // which is the exact failure this test was rewritten to eliminate.
         assert!(
-            types.len() >= 43,
-            "expected at least 43 widget types scanned from rusty/src/widgets, found {}: {:?}. \
+            types.len() >= 48,
+            "expected at least 48 widget types scanned from rusty/src/widgets, found {}: {:?}. \
              If the to_json `\"type\": \"...\"` convention changed, fix this scan.",
             types.len(),
             types
@@ -381,6 +388,7 @@ mod tests {
         // still cannot drift.
         let widgets: Vec<Box<dyn WidgetData>> = vec![
             Box::new(ActivityHeatmap::new()),
+            Box::new(Animation::new()),
             Box::new(Avatar::new("AB")),
             Box::new(Badge::new("test")),
             Box::new(Blade::new(0)),
@@ -391,6 +399,7 @@ mod tests {
             Box::new(Card::new()),
             Box::new(Checkbox::new(false)),
             Box::new(ColorInput::new()),
+            Box::new(Confetti::new()),
             Box::new(Container::new()),
             Box::new(DataTable::new(vec![])),
             Box::new(DateInput::new()),
@@ -416,6 +425,7 @@ mod tests {
             Box::new(Skeleton::new()),
             Box::new(Slider::new(0.0)),
             Box::new(Spacer::new()),
+            Box::new(StackedProgress::new()),
             Box::new(Table::new(vec![])),
             Box::new(Terminal::new()),
             Box::new(TextArea::new()),
@@ -423,12 +433,14 @@ mod tests {
             Box::new(TextInput::new()),
             Box::new(Toolbar::new()),
             Box::new(Tooltip::new("test", TextBlock::new("x"))),
+            Box::new(WireframeCallout::new("test")),
+            Box::new(WireframeNote::new("test")),
         ];
 
         assert_eq!(
             widgets.len(),
-            43,
-            "constructed-widget list drifted from the 43 widget types"
+            48,
+            "constructed-widget list drifted from the 48 widget types"
         );
 
         for widget in widgets {

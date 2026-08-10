@@ -53,6 +53,8 @@ enum WidgetKind {
     Breadcrumbs,
     Pagination,
     Toolbar,
+    Effects,
+    Wireframe,
 }
 
 impl WidgetKind {
@@ -101,6 +103,8 @@ impl WidgetKind {
             WidgetKind::Breadcrumbs => BreadcrumbsApp.build(ctx),
             WidgetKind::Pagination => PaginationApp.build(ctx),
             WidgetKind::Toolbar => ToolbarApp.build(ctx),
+            WidgetKind::Effects => EffectsApp.build(ctx),
+            WidgetKind::Wireframe => WireframeApp.build(ctx),
         }
     }
 }
@@ -1288,6 +1292,98 @@ impl View for ToolbarApp {
                     }),
             )
             .child(TextBlock::paragraph(&format!("Selected: {}", selected_val)))
+            .into()
+    }
+}
+
+struct EffectsApp;
+
+impl View for EffectsApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let selected = use_state(ctx, None::<usize>);
+        let selected_val = selected.get();
+        let selected_clone = selected.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Effects Test"))
+            .child(
+                Confetti::new()
+                    .trigger(EffectTrigger::Auto)
+                    .child(Button::new("Auto")),
+            )
+            .child(
+                Confetti::new()
+                    .trigger(EffectTrigger::Click)
+                    .child(Button::new("Celebrate")),
+            )
+            .child(
+                Confetti::new()
+                    .trigger(EffectTrigger::Hover)
+                    .child(Button::new("Hover for confetti")),
+            )
+            .child(
+                Animation::new()
+                    .animation_type(AnimationType::Bounce)
+                    .easing(AnimationEasing::EaseInOut)
+                    .duration(1.0)
+                    .child(TextBlock::paragraph("Bouncing")),
+            )
+            .child(
+                Animation::new()
+                    .animation_type(AnimationType::FadeIn)
+                    .easing(AnimationEasing::Linear)
+                    .visible(false)
+                    .child(TextBlock::paragraph("Fading")),
+            )
+            .child(
+                Animation::new()
+                    .animation_type(AnimationType::SlideIn)
+                    .direction(AnimationDirection::Up)
+                    .easing(AnimationEasing::BackOut)
+                    .child(TextBlock::paragraph("Sliding")),
+            )
+            .child(
+                StackedProgress::new()
+                    .segment(
+                        ProgressSegment::new(3.0)
+                            .label("Done")
+                            .color(Color::Named(NamedColor::Success)),
+                    )
+                    .segment(ProgressSegment::new(2.0).label("In progress"))
+                    .segment(ProgressSegment::new(5.0).label("Todo"))
+                    .show_labels(true),
+            )
+            .child(
+                StackedProgress::new()
+                    .segment(ProgressSegment::new(1.0).label("A"))
+                    .segment(ProgressSegment::new(1.0).label("B"))
+                    .segment(ProgressSegment::new(1.0).label("C"))
+                    .on_select(move |index| {
+                        selected_clone.set(Some(index));
+                    }),
+            )
+            .child(TextBlock::paragraph(&format!(
+                "Selected: {}",
+                selected_val.map(|v| v.to_string()).unwrap_or_default()
+            )))
+            .into()
+    }
+}
+
+struct WireframeApp;
+
+impl View for WireframeApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Wireframe Test"))
+            .child(
+                WireframeCallout::new("Move this button up")
+                    .title("UX note")
+                    .child(TextBlock::paragraph("Save")),
+            )
+            .child(WireframeNote::new("Consider dark mode").author("Alex"))
             .into()
     }
 }
