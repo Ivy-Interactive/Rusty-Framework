@@ -49,6 +49,14 @@
     .list-item [data-list-item-subtitle] { color: #666; font-size: 0.9em; }
     .radio-group { display: flex; gap: 8px; }
     [data-widget-type="radio_group"][data-orientation="vertical"] .radio-group { flex-direction: column; }
+    .stacked-progress-bar { display: flex; overflow: hidden; border-radius: 4px; }
+    [data-widget-type="stacked_progress"][data-rounded="true"] .stacked-progress-bar { border-radius: 999px; }
+    .stacked-progress-segment { background: #ccc; cursor: default; }
+    .stacked-progress-segment[data-selected="true"] { outline: 2px solid #0066cc; }
+    .wireframe-callout { border: 2px dashed #999; padding: 12px; border-radius: 4px; }
+    .wireframe-callout-title { font-weight: bold; }
+    .wireframe-note { border: 1px solid #ddd; background: #fffef0; padding: 12px; border-radius: 4px; }
+    .wireframe-note-author { color: #666; font-size: 0.85em; }
   </style>
 </head>
 <body>
@@ -836,6 +844,87 @@
             });
           }
           el.appendChild(select);
+          break;
+        }
+        case 'confetti': {
+          el.setAttribute('data-trigger', node.trigger || 'auto');
+          (node.children || []).forEach(child => {
+            el.appendChild(renderWidget(child));
+          });
+          break;
+        }
+        case 'animation': {
+          el.setAttribute('data-animation-type', node.animationType || '');
+          el.setAttribute('data-easing', node.easing || '');
+          el.setAttribute('data-trigger', node.trigger || 'auto');
+          el.setAttribute('data-visible', String(!!node.visible));
+          if (node.direction) el.setAttribute('data-direction', node.direction);
+          (node.children || []).forEach(child => {
+            el.appendChild(renderWidget(child));
+          });
+          break;
+        }
+        case 'stacked_progress': {
+          el.classList.add('stacked-progress');
+          el.setAttribute('data-rounded', String(!!node.rounded));
+          const bar = document.createElement('div');
+          bar.classList.add('stacked-progress-bar');
+          bar.style.height = (node.barHeight != null ? node.barHeight : 8) + 'px';
+          const segments = node.segments || [];
+          segments.forEach((segment, index) => {
+            const seg = document.createElement('div');
+            seg.classList.add('stacked-progress-segment');
+            seg.style.flex = String(segment.value);
+            if (segment.color) seg.setAttribute('data-color', segment.color);
+            if (segment.label) seg.setAttribute('data-label', segment.label);
+            if (index === node.selected) seg.setAttribute('data-selected', 'true');
+            if (node.hasOnSelect && node.id) {
+              seg.addEventListener('click', () => {
+                sendEvent(node.id, 'select', { value: index });
+              });
+            }
+            if (node.showLabels && segment.label) {
+              const lbl = document.createElement('span');
+              lbl.classList.add('stacked-progress-label');
+              lbl.textContent = segment.label;
+              seg.appendChild(lbl);
+            }
+            bar.appendChild(seg);
+          });
+          el.appendChild(bar);
+          break;
+        }
+        case 'wireframe_callout': {
+          el.classList.add('wireframe-callout');
+          if (node.color) el.setAttribute('data-color', node.color);
+          if (node.title) {
+            const t = document.createElement('div');
+            t.classList.add('wireframe-callout-title');
+            t.textContent = node.title;
+            el.appendChild(t);
+          }
+          const text = document.createElement('div');
+          text.classList.add('wireframe-callout-text');
+          text.textContent = node.text || '';
+          el.appendChild(text);
+          (node.children || []).forEach(child => {
+            el.appendChild(renderWidget(child));
+          });
+          break;
+        }
+        case 'wireframe_note': {
+          el.classList.add('wireframe-note');
+          if (node.color) el.setAttribute('data-color', node.color);
+          const text = document.createElement('div');
+          text.classList.add('wireframe-note-text');
+          text.textContent = node.text || '';
+          el.appendChild(text);
+          if (node.author) {
+            const author = document.createElement('div');
+            author.classList.add('wireframe-note-author');
+            author.textContent = node.author;
+            el.appendChild(author);
+          }
           break;
         }
         default: {

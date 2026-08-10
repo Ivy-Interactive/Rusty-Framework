@@ -8,7 +8,7 @@
 //! `src/frontend` to a Rusty server. Nothing in Rusty consumes this today, except
 //! [`crate::shared::ivy_node`], which builds on it to reshape a whole widget tree.
 //!
-//! All 38 Rusty widget types have an entry. `every_widget_type_is_mapped` derives its
+//! All 43 Rusty widget types have an entry. `every_widget_type_is_mapped` derives its
 //! list by scanning `rusty/src/widgets/*.rs` for both ways a widget declares its wire
 //! name -- a `"type": "..."` literal in a hand-written `to_json`, and `#[derive(Widget)]`,
 //! which emits the name from `#[widget(type = "...")]` or the struct name -- so a widget
@@ -79,13 +79,15 @@ pub enum IvyWidget {
 /// ```
 pub fn ivy_widget(rusty_type: &str) -> Option<IvyWidget> {
     match rusty_type {
-        // Mechanical snake_case → Ivy.PascalCase mappings (25 widgets)
+        // Mechanical snake_case → Ivy.PascalCase mappings (28 widgets)
+        "animation" => Some(IvyWidget::One("Ivy.Animation")),
         "avatar" => Some(IvyWidget::One("Ivy.Avatar")),
         "badge" => Some(IvyWidget::One("Ivy.Badge")),
         "button" => Some(IvyWidget::One("Ivy.Button")),
         "callout" => Some(IvyWidget::One("Ivy.Callout")),
         "card" => Some(IvyWidget::One("Ivy.Card")),
         "color_input" => Some(IvyWidget::One("Ivy.ColorInput")),
+        "confetti" => Some(IvyWidget::One("Ivy.Confetti")),
         "data_table" => Some(IvyWidget::One("Ivy.DataTable")),
         "dialog" => Some(IvyWidget::One("Ivy.Dialog")),
         "expandable" => Some(IvyWidget::One("Ivy.Expandable")),
@@ -100,6 +102,7 @@ pub fn ivy_widget(rusty_type: &str) -> Option<IvyWidget> {
         "separator" => Some(IvyWidget::One("Ivy.Separator")),
         "skeleton" => Some(IvyWidget::One("Ivy.Skeleton")),
         "spacer" => Some(IvyWidget::One("Ivy.Spacer")),
+        "stacked_progress" => Some(IvyWidget::One("Ivy.StackedProgress")),
         "table" => Some(IvyWidget::One("Ivy.Table")),
         "terminal" => Some(IvyWidget::One("Ivy.Terminal")),
         "text_block" => Some(IvyWidget::One("Ivy.TextBlock")),
@@ -125,7 +128,7 @@ pub fn ivy_widget(rusty_type: &str) -> Option<IvyWidget> {
             value: "Textarea",
         }),
 
-        // Rust-only widgets with no Ivy counterpart (7)
+        // Rust-only widgets with no Ivy counterpart (9)
         // - activity_heatmap: no heatmap widget in widgetMap.ts
         // - diff_view: no diff widget in widgetMap.ts
         // - multi_select: no Ivy.MultiSelect; Ivy.SelectInput is single-value
@@ -134,6 +137,8 @@ pub fn ivy_widget(rusty_type: &str) -> Option<IvyWidget> {
         // - rich_text_input: Ivy.RichTextBlock is read-only; Ivy.ContentInput
         //   and Ivy.CodeInput are different widgets
         // - slider: no Ivy.Slider in widgetMap.ts
+        // - wireframe_callout / wireframe_note: no counterpart anywhere in
+        //   widgetMap.ts; these annotate designs and have no rendered Ivy form.
         "activity_heatmap" => Some(IvyWidget::RustOnly),
         "diff_view" => Some(IvyWidget::RustOnly),
         "multi_select" => Some(IvyWidget::RustOnly),
@@ -141,6 +146,8 @@ pub fn ivy_widget(rusty_type: &str) -> Option<IvyWidget> {
         "radio_group" => Some(IvyWidget::RustOnly),
         "rich_text_input" => Some(IvyWidget::RustOnly),
         "slider" => Some(IvyWidget::RustOnly),
+        "wireframe_callout" => Some(IvyWidget::RustOnly),
+        "wireframe_note" => Some(IvyWidget::RustOnly),
 
         _ => None,
     }
