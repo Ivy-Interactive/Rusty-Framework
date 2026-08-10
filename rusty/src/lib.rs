@@ -15,8 +15,12 @@ pub mod prelude {
         create_context, try_use_service, use_alert, use_callback, use_context, use_download,
         use_download_bytes, use_download_stream, use_effect, use_effect_with_deps, use_form,
         use_interval, use_memo, use_mutation, use_query, use_reducer, use_ref, use_service,
-        use_signal, use_state, use_stream, use_stream_text, use_trigger, use_trigger_unit, DynEq,
-        QueryMutator, QueryResult, Ref, ShowAlert, State, StreamOptions, StreamStatus,
+        use_signal, use_state, use_stream, use_stream_text, use_trigger, use_trigger_unit,
+        use_upload, use_upload_to, DynEq, QueryMutator, QueryResult, Ref, ShowAlert, State,
+        StreamOptions, StreamStatus, UploadStatus,
+    };
+    pub use crate::server::upload::{
+        UploadConstraints, UploadError, UploadEvent, UploadedFile, DEFAULT_MAX_UPLOAD_BYTES,
     };
     pub use crate::server::{RustyServer, DEFAULT_BIND_ADDRESS};
     pub use crate::shared::{Align, Color, Density, Icon, Justify, NamedColor, Size};

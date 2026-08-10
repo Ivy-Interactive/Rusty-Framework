@@ -17,6 +17,7 @@ pub mod use_signal;
 pub mod use_state;
 pub mod use_stream;
 pub mod use_trigger;
+pub mod use_upload;
 
 pub use deps::{deps_changed, DynEq};
 pub use use_alert::{use_alert, AlertCallback, ShowAlert};
@@ -38,3 +39,4 @@ pub use use_stream::{
     use_stream, use_stream_text, StreamOptions, StreamResult, StreamStatus, TextStreamResult,
 };
 pub use use_trigger::{use_trigger, use_trigger_unit};
+pub use use_upload::{use_upload, use_upload_to, Upload, UploadStatus};
