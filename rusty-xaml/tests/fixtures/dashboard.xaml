@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A document shaped like something a real app would load from disk. -->
+<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+            xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+            x:Name="Dashboard"
+            Spacing="16"
+            Padding="24">
+    <TextBlock Text="Dashboard" Variant="Heading1" />
+
+    <Grid Columns="2" Spacing="12">
+        <GroupBox Header="Revenue" Subtitle="This month">
+            <StackPanel Spacing="4">
+                <TextBlock Text="£12,480" Variant="Heading2" />
+                <Badge Content="+8%" Variant="Outline" Color="Success" />
+            </StackPanel>
+        </GroupBox>
+
+        <GroupBox Header="Progress">
+            <StackPanel Spacing="8">
+                <ProgressBar Value="0.62" Label="Quarterly target" />
+                <Separator />
+                <TextBlock Text="62% of target" Variant="Caption" />
+            </StackPanel>
+        </GroupBox>
+    </Grid>
+
+    <Border Padding="12" Border="True" Rounded="True">
+        <ListView>
+            <ListViewItem Content="Invoice #1041" Subtitle="Paid" Icon="check" />
+            <ListViewItem Content="Invoice #1042" Subtitle="Pending" Icon="clock" />
+        </ListView>
+    </Border>
+</StackPanel>
