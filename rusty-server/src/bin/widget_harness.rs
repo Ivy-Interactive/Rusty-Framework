@@ -1287,10 +1287,7 @@ impl View for ToolbarApp {
                         selected_clone.set(tag);
                     }),
             )
-            .child(TextBlock::paragraph(&format!(
-                "Selected: {}",
-                selected_val
-            )))
+            .child(TextBlock::paragraph(&format!("Selected: {}", selected_val)))
             .into()
     }
 }
