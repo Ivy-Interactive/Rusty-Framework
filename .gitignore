@@ -1,8 +1,5 @@
+# Single workspace with one shared target dir — no crate has its own.
 /target
-/rusty/target
-/rusty-macros/target
-/rusty-server/target
-/rusty-docs/target
 /rusty-docs/src/generated/
 
 # trybuild writes a rejected .stderr snapshot here while you review it
