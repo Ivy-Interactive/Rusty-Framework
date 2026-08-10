@@ -1,12 +1,13 @@
 use axum::{
     body::Body,
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    extract::{Path, Query, State},
-    http::{header, StatusCode},
-    response::IntoResponse,
-    routing::get,
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
+    http::{header, HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
+    routing::{get, post},
     Router,
 };
+use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -21,6 +22,10 @@ use crate::views::view::View;
 
 use super::download::{DownloadPayload, DownloadService};
 use super::session::{AppSession, AppSessionStore};
+use super::upload::{
+    accepts, UploadError, UploadEvent, UploadService, UploadSlot, UploadedFile,
+    DEFAULT_MAX_UPLOAD_BYTES, MULTIPART_ENVELOPE_ALLOWANCE,
+};
 
 /// Messages sent from client to server.
 #[derive(Debug, Serialize, Deserialize)]
@@ -92,6 +97,7 @@ pub struct RustyServer {
     apps: AppRegistry,
     services: ServiceRegistry,
     static_dir: Option<PathBuf>,
+    max_upload_bytes: u64,
 }
 
 impl RustyServer {
@@ -112,6 +118,7 @@ impl RustyServer {
             apps,
             services: ServiceRegistry::new(),
             static_dir: None,
+            max_upload_bytes: DEFAULT_MAX_UPLOAD_BYTES,
         }
     }
 
@@ -126,6 +133,7 @@ impl RustyServer {
             apps: AppRegistry::new(),
             services: ServiceRegistry::new(),
             static_dir: None,
+            max_upload_bytes: DEFAULT_MAX_UPLOAD_BYTES,
         }
     }
 
@@ -171,8 +179,24 @@ impl RustyServer {
         self
     }
 
+    /// Cap the request body the upload endpoint will accept. Defaults to
+    /// [`DEFAULT_MAX_UPLOAD_BYTES`] (32 MiB).
+    ///
+    /// This is the outer transport limit, applied as a `DefaultBodyLimit` layer on
+    /// the upload route alone — the WebSocket and download routes keep axum's own
+    /// 2 MiB default. A body over the limit is refused by the layer with a bare
+    /// `413` and no [`UploadError`], so per-file limits belong in
+    /// [`UploadConstraints::max_bytes`](crate::server::upload::UploadConstraints::max_bytes),
+    /// which reports a reason the view can render. Keep this at or above the largest
+    /// `max_bytes` any view asks for.
+    pub fn with_max_upload_bytes(mut self, max_upload_bytes: u64) -> Self {
+        self.max_upload_bytes = max_upload_bytes;
+        self
+    }
+
     /// Build the axum router with WebSocket support.
     pub fn router(self) -> Router {
+        let max_upload_bytes = self.max_upload_bytes;
         let session_store =
             AppSessionStore::with_apps(Arc::new(self.apps), Arc::new(self.services));
         let state = Arc::new(AppState { session_store });
@@ -184,6 +208,13 @@ impl RustyServer {
             .route(
                 "/rusty/download/{connection_id}/{download_id}",
                 get(download_handler),
+            )
+            .route(
+                "/rusty/upload/{connection_id}/{upload_id}",
+                // The raised body limit applies to this route only.
+                post(upload_handler).layer(DefaultBodyLimit::max(
+                    usize::try_from(max_upload_bytes).unwrap_or(usize::MAX),
+                )),
             )
             .with_state(state);
 
@@ -291,6 +322,179 @@ async fn download_handler(
         body,
     )
         .into_response()
+}
+
+/// Receive a file for an upload slot registered by a view through `use_upload`.
+///
+/// The body shape is fixed by the client half that already exists:
+/// `uploadFileWithProgress` POSTs a `multipart/form-data` body with a single field
+/// named `file`. Slots are keyed by connection, so a URL only resolves for the
+/// session that created it, and anything unresolvable — unknown session, unparseable
+/// or unknown upload id, no `UploadService` — is a 404 with no observer to notify.
+///
+/// Once a slot *is* resolved, every failure reports itself to the view through
+/// `UploadEvent::Failed` before answering, because the browser only sees the status
+/// code and cannot render a reason.
+async fn upload_handler(
+    Path((connection_id, upload_id)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    // `Multipart` consumes the body, so it must come last.
+    mut multipart: Multipart,
+) -> Response {
+    let Ok(upload_id) = Uuid::parse_str(&upload_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Some(session_arc) = state.session_store.get_session(&connection_id).await else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    // Resolve the service and release the session lock before reading the body: an
+    // upload can take a while and must not block the session's event loop.
+    let upload_service = {
+        let session = session_arc.read().await;
+        session.services.get::<UploadService>()
+    };
+    let Some(upload_service) = upload_service else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    // Unlike a download, resolving does not consume the slot — a view can accept a
+    // second file through the same URL.
+    let Some(slot) = upload_service.slot(upload_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let total = headers
+        .get(header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok());
+
+    // Reject a body that cannot possibly fit before reading any of it. See
+    // MULTIPART_ENVELOPE_ALLOWANCE for why this is not a bare `total > max`.
+    if let (Some(max_bytes), Some(total)) = (slot.constraints.max_bytes, total) {
+        if total > max_bytes.saturating_add(MULTIPART_ENVELOPE_ALLOWANCE) {
+            return reject(
+                &slot,
+                UploadError::TooLarge {
+                    limit: max_bytes,
+                    actual: total,
+                },
+            );
+        }
+    }
+
+    loop {
+        let field = match multipart.next_field().await {
+            Ok(Some(field)) => field,
+            // Every field consumed and none of them was the file.
+            Ok(None) => return reject(&slot, UploadError::NoFile),
+            Err(error) => return reject(&slot, UploadError::Transport(error.to_string())),
+        };
+
+        if field.name() != Some("file") {
+            continue;
+        }
+
+        // Copy the metadata out before reading chunks, which borrows the field
+        // mutably.
+        let file_name = field.file_name().unwrap_or("upload").to_string();
+        let mime_type = field
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_string();
+
+        if !accepts(&slot.constraints.accept, &mime_type, &file_name) {
+            return reject(
+                &slot,
+                UploadError::RejectedMimeType {
+                    mime_type,
+                    accept: slot.constraints.accept.clone(),
+                },
+            );
+        }
+
+        return read_file_field(field, slot, file_name, mime_type, total).await;
+    }
+}
+
+/// Drain one multipart field into memory, reporting progress and enforcing the
+/// size constraints as the bytes arrive.
+///
+/// Chunk by chunk rather than `Field::bytes()`: that is what makes progress
+/// reporting and mid-flight cancellation possible, and it lets an oversize body be
+/// rejected without buffering all of it.
+async fn read_file_field(
+    mut field: axum::extract::multipart::Field<'_>,
+    slot: UploadSlot,
+    file_name: String,
+    mime_type: String,
+    total: Option<u64>,
+) -> Response {
+    let mut content = BytesMut::new();
+    let mut received = 0u64;
+
+    loop {
+        if slot.is_cancelled() {
+            return reject(&slot, UploadError::Cancelled);
+        }
+
+        match field.chunk().await {
+            Ok(Some(chunk)) => {
+                received += chunk.len() as u64;
+                if let Some(max_bytes) = slot.constraints.max_bytes {
+                    if received > max_bytes {
+                        return reject(
+                            &slot,
+                            UploadError::TooLarge {
+                                limit: max_bytes,
+                                actual: received,
+                            },
+                        );
+                    }
+                }
+                content.extend_from_slice(&chunk);
+                slot.emit(UploadEvent::Progress { received, total });
+            }
+            Ok(None) => break,
+            Err(error) => return reject(&slot, UploadError::Transport(error.to_string())),
+        }
+    }
+
+    if let Some(min_bytes) = slot.constraints.min_bytes {
+        if received < min_bytes {
+            return reject(
+                &slot,
+                UploadError::TooSmall {
+                    limit: min_bytes,
+                    actual: received,
+                },
+            );
+        }
+    }
+
+    let body = serde_json::json!({
+        "fileName": file_name,
+        "mimeType": mime_type,
+        "size": content.len(),
+    });
+    slot.emit(UploadEvent::Completed(UploadedFile {
+        file_name,
+        mime_type,
+        content: content.freeze(),
+    }));
+
+    (StatusCode::OK, axum::Json(body)).into_response()
+}
+
+/// Tell the view why the upload failed, then answer with the matching status.
+///
+/// The client reads only the status code, so the observer call is the only way the
+/// reason reaches the browser at all — as rendered view state.
+fn reject(slot: &UploadSlot, error: UploadError) -> Response {
+    let status = error.status_code();
+    tracing::debug!(%error, "upload rejected");
+    slot.emit(UploadEvent::Failed(error));
+    status.into_response()
 }
 
 /// Build the session's tree, send it as a full `Refresh`, and reset the reconciler
@@ -930,5 +1134,251 @@ mod tests {
         stream.read_to_string(&mut response).await.unwrap();
         assert!(response.contains("200 OK"), "got {response}");
         assert!(response.trim_end().ends_with("ok"), "got {response}");
+    }
+
+    // --- Multipart upload through the real endpoint ---
+
+    use crate::server::upload::UploadConstraints;
+
+    /// Renders its own upload URL, and once a file lands, the name and bytes that
+    /// reached view state — the only way a test on the far side of the socket can
+    /// see what the endpoint handed the hook.
+    struct UploadView {
+        constraints: UploadConstraints,
+    }
+
+    impl crate::views::view::View for UploadView {
+        fn build(&self, ctx: &mut crate::views::view::BuildContext) -> crate::views::view::Element {
+            let upload = crate::hooks::use_upload(ctx, self.constraints.clone());
+            let outcome = match upload.file.get() {
+                Some(file) => format!(
+                    "got:{}:{}:{}",
+                    file.file_name,
+                    file.mime_type,
+                    String::from_utf8_lossy(&file.content)
+                ),
+                None => format!("status:{:?}", upload.status.get()),
+            };
+
+            crate::widgets::Layout::vertical()
+                .children(vec![
+                    TextBlock::new(&upload.url.get().unwrap_or_default()).into(),
+                    TextBlock::new(&outcome).into(),
+                ])
+                .into()
+        }
+    }
+
+    fn upload_router(constraints: UploadConstraints) -> Router {
+        RustyServer::empty(0)
+            .with_app("uploader", "Uploader", move || UploadView {
+                constraints: constraints.clone(),
+            })
+            .router()
+    }
+
+    /// Read messages until one carries the slot URL the mount effect published.
+    ///
+    /// It arrives in an `update`, not the initial `refresh`: the effect runs after
+    /// the first build, so the first tree still has `url == None`.
+    async fn next_upload_url(client: &mut Client) -> String {
+        for _ in 0..5 {
+            let text = next_message(client).await;
+            if let Some(start) = text.find("/rusty/upload/") {
+                let rest = &text[start..];
+                let end = rest
+                    .find(|c: char| !c.is_ascii_alphanumeric() && !"/-_".contains(c))
+                    .unwrap_or(rest.len());
+                return rest[..end].to_string();
+            }
+        }
+        panic!("the upload url never reached the client");
+    }
+
+    /// Read messages until one contains `needle`, which is how a test observes the
+    /// view state the endpoint's observer wrote.
+    async fn wait_for_text(client: &mut Client, needle: &str) -> String {
+        for _ in 0..10 {
+            let text = next_message(client).await;
+            if text.contains(needle) {
+                return text;
+            }
+        }
+        panic!("the client never received {needle}");
+    }
+
+    /// POST a single-field `multipart/form-data` body and return the raw response.
+    ///
+    /// Hand-rolled over `TcpStream` rather than adding an HTTP client
+    /// dev-dependency, the same way `test_health_endpoint_still_responds` does it.
+    /// The body shape mirrors what the browser's `FormData` produces.
+    async fn post_multipart(
+        addr: SocketAddr,
+        path: &str,
+        field_name: &str,
+        file_name: &str,
+        content_type: &str,
+        content: &[u8],
+    ) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        const BOUNDARY: &str = "rustyTestBoundary";
+
+        let mut body = Vec::new();
+        body.extend_from_slice(format!("--{BOUNDARY}\r\n").as_bytes());
+        body.extend_from_slice(
+            format!(
+                "Content-Disposition: form-data; name=\"{field_name}\"; filename=\"{file_name}\"\r\n"
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(format!("Content-Type: {content_type}\r\n\r\n").as_bytes());
+        body.extend_from_slice(content);
+        body.extend_from_slice(format!("\r\n--{BOUNDARY}--\r\n").as_bytes());
+
+        let mut request = format!(
+            "POST {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: multipart/form-data; \
+             boundary={BOUNDARY}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        )
+        .into_bytes();
+        request.extend_from_slice(&body);
+
+        let mut stream = TcpStream::connect(addr).await.unwrap();
+        stream.write_all(&request).await.unwrap();
+
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).await.unwrap();
+        String::from_utf8_lossy(&response).to_string()
+    }
+
+    #[tokio::test]
+    async fn test_upload_accepts_a_file_and_the_bytes_reach_view_state() {
+        let addr = serve_on_loopback(upload_router(UploadConstraints::new())).await;
+        let mut client = connect(addr, "").await;
+        let url = next_upload_url(&mut client).await;
+
+        let response = post_multipart(
+            addr,
+            &url,
+            "file",
+            "notes.csv",
+            "text/csv",
+            b"id,name\n1,alice",
+        )
+        .await;
+
+        assert!(response.contains("200 OK"), "got {response}");
+        assert!(
+            response.contains("\"fileName\":\"notes.csv\""),
+            "got {response}"
+        );
+        assert!(response.contains("\"size\":15"), "got {response}");
+
+        // The bytes made it all the way into the view's own state, not just the
+        // endpoint's response.
+        let tree = wait_for_text(&mut client, "got:").await;
+        assert!(
+            tree.contains("got:notes.csv:text/csv:id,name"),
+            "got {tree}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_upload_over_max_bytes_is_rejected_while_it_streams() {
+        // Small enough that Content-Length stays inside the envelope allowance, so
+        // the rejection has to come from the chunk loop.
+        let addr = serve_on_loopback(upload_router(UploadConstraints::new().max_bytes(8))).await;
+        let mut client = connect(addr, "").await;
+        let url = next_upload_url(&mut client).await;
+
+        let response =
+            post_multipart(addr, &url, "file", "big.bin", "text/plain", &[b'x'; 64]).await;
+
+        assert!(response.contains("413"), "got {response}");
+        let tree = wait_for_text(&mut client, "status:Error(").await;
+        assert!(tree.contains("over the 8 byte limit"), "got {tree}");
+    }
+
+    #[tokio::test]
+    async fn test_upload_far_over_max_bytes_is_rejected_from_content_length() {
+        let addr = serve_on_loopback(upload_router(UploadConstraints::new().max_bytes(8))).await;
+        let mut client = connect(addr, "").await;
+        let url = next_upload_url(&mut client).await;
+
+        // Past the envelope allowance, so it never gets read at all.
+        let response = post_multipart(
+            addr,
+            &url,
+            "file",
+            "huge.bin",
+            "text/plain",
+            &[b'x'; 20 * 1024],
+        )
+        .await;
+
+        assert!(response.contains("413"), "got {response}");
+        let tree = wait_for_text(&mut client, "status:Error(").await;
+        assert!(tree.contains("byte limit"), "got {tree}");
+    }
+
+    #[tokio::test]
+    async fn test_upload_of_a_disallowed_mime_type_is_rejected() {
+        let router = upload_router(UploadConstraints::new().accept(["text/csv"]));
+        let addr = serve_on_loopback(router).await;
+        let mut client = connect(addr, "").await;
+        let url = next_upload_url(&mut client).await;
+
+        let response = post_multipart(addr, &url, "file", "cat.png", "image/png", b"\x89PNG").await;
+
+        assert!(response.contains("415"), "got {response}");
+        let tree = wait_for_text(&mut client, "status:Error(").await;
+        assert!(
+            tree.contains("image/png is not one of text/csv"),
+            "got {tree}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_upload_to_an_unknown_upload_id_is_not_found() {
+        let addr = serve_on_loopback(upload_router(UploadConstraints::new())).await;
+        let mut client = connect(addr, "").await;
+        let url = next_upload_url(&mut client).await;
+
+        // Same session, a slot that was never registered.
+        let (prefix, _) = url.rsplit_once('/').unwrap();
+        let path = format!("{prefix}/{}", Uuid::new_v4());
+        let response = post_multipart(addr, &path, "file", "a.csv", "text/csv", b"hi").await;
+
+        assert!(response.contains("404"), "got {response}");
+    }
+
+    #[tokio::test]
+    async fn test_upload_to_another_connections_url_is_not_found() {
+        let addr = serve_on_loopback(upload_router(UploadConstraints::new())).await;
+        let mut client = connect(addr, "").await;
+        let url = next_upload_url(&mut client).await;
+
+        // The slot id is real; only the connection is wrong. Guessing an id must not
+        // be enough to upload into someone else's session.
+        let upload_id = url.rsplit('/').next().unwrap();
+        let path = format!("/rusty/upload/{}/{upload_id}", Uuid::new_v4());
+        let response = post_multipart(addr, &path, "file", "a.csv", "text/csv", b"hi").await;
+
+        assert!(response.contains("404"), "got {response}");
+    }
+
+    #[tokio::test]
+    async fn test_upload_without_a_file_field_is_a_bad_request() {
+        let addr = serve_on_loopback(upload_router(UploadConstraints::new())).await;
+        let mut client = connect(addr, "").await;
+        let url = next_upload_url(&mut client).await;
+
+        let response =
+            post_multipart(addr, &url, "notTheFile", "a.csv", "text/csv", b"id,name").await;
+
+        assert!(response.contains("400"), "got {response}");
+        let tree = wait_for_text(&mut client, "status:Error(").await;
+        assert!(tree.contains("no file field"), "got {tree}");
     }
 }

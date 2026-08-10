@@ -47,8 +47,12 @@ pub(crate) const SLOT_CONSUMING_HOOKS: &[&str] = &[
     "use_ref",
     "use_signal",
     "use_state",
+    "use_stream",
+    "use_stream_text",
     "use_trigger",
     "use_trigger_unit",
+    "use_upload",
+    "use_upload_to",
 ];
 
 /// Hooks whose return value triggers a rebuild when mutated.
