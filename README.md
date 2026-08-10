@@ -57,7 +57,11 @@ Rusty-Framework follows the same architecture as Ivy-Framework:
 | `rusty` | Core framework — views, hooks, widgets, server, shared types |
 | `rusty-macros` | Proc macros for `#[derive(Widget)]`, `#[prop]`, `#[event]` |
 | `rusty-ivyml` | Proc macros for `ivyml!` / `ivyml_file!` declarative markup |
+| `rusty-filter` | Filter query lexer/parser/AST and evaluator |
+| `rusty-xaml` | Parses XAML markup into widget trees at runtime |
 | `rusty-server` | Standalone server binary |
+| `rusty-docs` | Docs site binary; `build.rs` generates `src/generated/` |
+| `rusty-desktop` | Native shell via wry/tao behind the optional `shell` feature |
 
 ## Examples
 

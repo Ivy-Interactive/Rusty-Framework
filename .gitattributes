@@ -1,4 +1,5 @@
 # Shell scripts must check out LF: /bin/sh on Linux CI is dash, which fails
-# with `Syntax error: "|" unexpected` on a CRLF script. src/frontend has its
-# own .gitattributes; this covers scripts/ and .husky/ at the repo root.
+# with `Syntax error: "|" unexpected` on a CRLF script. This covers scripts/
+# at the repo root. There is no root .husky/ — the husky hooks live at
+# src/frontend/.husky, which has its own .gitattributes.
 *.sh text eol=lf
