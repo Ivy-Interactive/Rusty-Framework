@@ -1,41 +1,25 @@
 # Frontend
 
-**Node.js Version Requirement**: This project requires Node.js version 22.12.0 or greater, and uses **vp** (Vite+) as its toolchain.
+**Node.js Version Requirement**: This project requires Node.js version 24 or greater (matching
+`.github/workflows/ci.yml`), and uses **pnpm** with the **Vite+** (`vp`) toolchain.
 
 ## Development
 
-**Important Tooling Note**: This ecosystem strictly uses `vp`. Running the legacy `npm install` command is deliberately blocked.
-
-**For Full-Stack / .NET Developers:**
-If you are simply cloning the repository and running `dotnet build` (or opening the solution in an IDE like visual studio or Rider), **you do not need to install anything manually**. We've engineered the MSBuild targets to natively bootstrap `vite-plus` safely if needed, but the recommended approach is to have the `vp` CLI installed globally. This completely automates the frontend installation and compilation pipeline seamlessly without requiring manual intervention.
-
-**For Standalone Frontend Development:**
-If you want to explicitly work on the frontend in isolation (using HMR for widgets), you must manually run:
+Install dependencies from `src/frontend`:
 
 ```bash
-# Install vp (Vite+)
-# macOS / Linux
-curl -fsSL https://vite.plus | bash
-
-# Windows (PowerShell)
-irm https://vite.plus/ps1 | iex
-
-# After installation, restart your terminal and run:
-vp i
+pnpm install --frozen-lockfile
 ```
 
-For more information, see the [Vite+ Installation Guide](https://viteplus.dev/guide/#install-vp).
-
-After installing the packages, you can use the native Vite+ CLI:
-
-```bash
-vp dev
-```
-
-To build for production (which runs `tsc` for type-checking before bundling):
+Always run the toolchain via `pnpm run <script>` or `pnpm exec vp` — never a globally installed
+`vp`. A global `vp` may be an older version, and `vp migrate` would downgrade the project config.
 
 ```bash
-vp run build
+pnpm run dev             # start the dev server
+pnpm run build           # typecheck (tsc -b) then bundle for production
+pnpm lint                # lint
+pnpm test                # unit tests
+pnpm format:check        # formatting check
 ```
 
 ## Developer Logging
