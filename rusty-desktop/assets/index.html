@@ -852,6 +852,175 @@
           el.appendChild(select);
           break;
         }
+        case 'chat': {
+          if (node.streaming) el.setAttribute('data-streaming', 'true');
+          const log = document.createElement('div');
+          log.setAttribute('data-chat-log', 'true');
+          (node.children || []).forEach(child => {
+            log.appendChild(renderWidget(child));
+          });
+          el.appendChild(log);
+          const composer = document.createElement('textarea');
+          composer.setAttribute('data-chat-input', 'true');
+          if (node.placeholder) composer.placeholder = node.placeholder;
+          el.appendChild(composer);
+          (node.quickReplies || []).forEach(reply => {
+            const quick = document.createElement('button');
+            quick.setAttribute('data-quick-reply', reply);
+            quick.textContent = reply;
+            if (node.hasOnSend && node.id) {
+              // Quick replies reuse `send`: the payload is what typing the text would produce.
+              quick.addEventListener('click', () => sendEvent(node.id, 'send', { value: reply }));
+            }
+            el.appendChild(quick);
+          });
+          const send = document.createElement('button');
+          send.setAttribute('data-chat-send', 'true');
+          send.textContent = 'Send';
+          if (node.hasOnSend && node.id) {
+            send.addEventListener('click', () => {
+              sendEvent(node.id, 'send', { value: composer.value });
+              composer.value = '';
+            });
+          }
+          el.appendChild(send);
+          const cancel = document.createElement('button');
+          cancel.setAttribute('data-chat-cancel', 'true');
+          cancel.textContent = 'Cancel';
+          if (node.hasOnCancel && node.id) {
+            cancel.addEventListener('click', () => sendEvent(node.id, 'cancel', {}));
+          }
+          el.appendChild(cancel);
+          break;
+        }
+        case 'chat_message': {
+          el.setAttribute('data-sender', node.sender || '');
+          (node.children || []).forEach(child => {
+            el.appendChild(renderWidget(child));
+          });
+          break;
+        }
+        case 'chat_loading': {
+          el.setAttribute('data-chat-loading', 'true');
+          break;
+        }
+        case 'chat_status': {
+          const status = document.createElement('span');
+          status.setAttribute('data-chat-status', 'true');
+          status.textContent = node.text || '';
+          el.appendChild(status);
+          break;
+        }
+        case 'audio_input': {
+          if (node.mimeType) el.setAttribute('data-mime-type', node.mimeType);
+          if (node.recordingLabel) el.setAttribute('data-recording-label', node.recordingLabel);
+          if (node.uploadUrl) el.setAttribute('data-upload-url', node.uploadUrl);
+          el.setAttribute('data-chunk-interval', String(node.chunkInterval));
+          if (node.sampleRate) el.setAttribute('data-sample-rate', String(node.sampleRate));
+          if (node.showWaveform) {
+            const waveform = document.createElement('div');
+            waveform.setAttribute('data-waveform', 'true');
+            el.appendChild(waveform);
+          }
+          const record = document.createElement('button');
+          record.setAttribute('data-record', 'true');
+          record.textContent = node.label || 'Record';
+          if (node.disabled) record.disabled = true;
+          if (node.hasOnCapture && node.id) {
+            // No MediaRecorder and no getUserMedia: a fixed stub payload proves the
+            // round trip without asking the browser for a microphone.
+            record.addEventListener('click', () => {
+              sendEvent(node.id, 'capture', { value: 'data:audio/webm;base64,c3R1Yg==' });
+            });
+          }
+          if (node.hasOnFocus && node.id) {
+            record.addEventListener('focus', () => sendEvent(node.id, 'focus', {}));
+          }
+          if (node.hasOnBlur && node.id) {
+            record.addEventListener('blur', () => sendEvent(node.id, 'blur', {}));
+          }
+          el.appendChild(record);
+          if (node.invalid) {
+            const invalid = document.createElement('div');
+            invalid.setAttribute('data-invalid', 'true');
+            invalid.textContent = node.invalid;
+            el.appendChild(invalid);
+          }
+          break;
+        }
+        case 'camera_input': {
+          if (node.facingMode) el.setAttribute('data-facing-mode', node.facingMode);
+          if (node.captureMode) el.setAttribute('data-capture-mode', node.captureMode);
+          if (node.uploadUrl) el.setAttribute('data-upload-url', node.uploadUrl);
+          const preview = document.createElement('div');
+          preview.setAttribute('data-preview', 'true');
+          preview.textContent = node.placeholder || '';
+          el.appendChild(preview);
+          const shutter = document.createElement('button');
+          shutter.setAttribute('data-capture', 'true');
+          shutter.textContent = 'Capture';
+          if (node.disabled) shutter.disabled = true;
+          if (node.hasOnCapture && node.id) {
+            shutter.addEventListener('click', () => {
+              sendEvent(node.id, 'capture', { value: 'data:image/png;base64,c3R1Yg==' });
+            });
+          }
+          if (node.hasOnFocus && node.id) {
+            shutter.addEventListener('focus', () => sendEvent(node.id, 'focus', {}));
+          }
+          if (node.hasOnBlur && node.id) {
+            shutter.addEventListener('blur', () => sendEvent(node.id, 'blur', {}));
+          }
+          el.appendChild(shutter);
+          if (node.invalid) {
+            const invalid = document.createElement('div');
+            invalid.setAttribute('data-invalid', 'true');
+            invalid.textContent = node.invalid;
+            el.appendChild(invalid);
+          }
+          break;
+        }
+        case 'signature_input': {
+          const pad = document.createElement('canvas');
+          pad.setAttribute('data-signature-pad', 'true');
+          if (node.pen) pad.setAttribute('data-pen', node.pen);
+          if (node.background) pad.setAttribute('data-background', node.background);
+          if (node.penThickness) pad.setAttribute('data-pen-thickness', String(node.penThickness));
+          if (node.placeholder) pad.setAttribute('data-placeholder', node.placeholder);
+          if (node.value) pad.setAttribute('data-value', node.value);
+          el.appendChild(pad);
+          const sign = document.createElement('button');
+          sign.setAttribute('data-sign', 'true');
+          sign.textContent = 'Sign';
+          if (node.disabled) sign.disabled = true;
+          if (node.hasOnSign && node.id) {
+            // Drawing on a canvas is not what this harness is testing; the stub PNG is.
+            sign.addEventListener('click', () => {
+              sendEvent(node.id, 'sign', { value: 'data:image/png;base64,c3R1Yg==' });
+            });
+          }
+          if (node.hasOnFocus && node.id) {
+            sign.addEventListener('focus', () => sendEvent(node.id, 'focus', {}));
+          }
+          if (node.hasOnBlur && node.id) {
+            sign.addEventListener('blur', () => sendEvent(node.id, 'blur', {}));
+          }
+          el.appendChild(sign);
+          const clear = document.createElement('button');
+          clear.setAttribute('data-clear', 'true');
+          clear.textContent = 'Clear';
+          if (node.hasOnClear && node.id) {
+            clear.addEventListener('click', () => sendEvent(node.id, 'clear', {}));
+          }
+          el.appendChild(clear);
+          if (node.invalid) {
+            const invalid = document.createElement('div');
+            invalid.setAttribute('data-invalid', 'true');
+            invalid.textContent = node.invalid;
+            el.appendChild(invalid);
+          }
+          break;
+        }
         default: {
           el.textContent = `[Unknown widget: ${type}]`;
           // Still render children if present

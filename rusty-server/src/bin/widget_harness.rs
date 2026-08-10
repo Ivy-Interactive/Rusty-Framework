@@ -49,6 +49,10 @@ enum WidgetKind {
     Table,
     Dialog,
     Tooltip,
+    Chat,
+    AudioInput,
+    CameraInput,
+    SignatureInput,
 }
 
 impl WidgetKind {
@@ -93,6 +97,10 @@ impl WidgetKind {
             WidgetKind::Table => TableApp.build(ctx),
             WidgetKind::Dialog => DialogApp.build(ctx),
             WidgetKind::Tooltip => TooltipApp.build(ctx),
+            WidgetKind::Chat => ChatApp.build(ctx),
+            WidgetKind::AudioInput => AudioInputApp.build(ctx),
+            WidgetKind::CameraInput => CameraInputApp.build(ctx),
+            WidgetKind::SignatureInput => SignatureInputApp.build(ctx),
         }
     }
 }
@@ -1152,6 +1160,177 @@ impl View for TooltipApp {
                 "Text can be explained too",
                 TextBlock::paragraph("Hover this text"),
             ))
+            .into()
+    }
+}
+
+struct ChatApp;
+
+impl View for ChatApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        // The conversation is state rather than a fixed list so the spec can prove a
+        // round trip: typing and sending appends a message the server rendered.
+        let messages = use_state(ctx, vec!["Hello".to_string()]);
+        let sent = messages.get();
+        let messages_clone = messages.clone();
+        let cancelled = use_state(ctx, 0usize);
+        let cancelled_count = cancelled.get();
+        let cancelled_clone = cancelled.clone();
+
+        let bubbles: Vec<Element> = sent
+            .iter()
+            .enumerate()
+            .map(|(index, text)| {
+                // Alternate senders so both spellings reach the client.
+                if index % 2 == 0 {
+                    ChatMessage::user(TextBlock::paragraph(text)).into()
+                } else {
+                    ChatMessage::assistant(TextBlock::paragraph(text)).into()
+                }
+            })
+            .collect();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Chat Test"))
+            .child(
+                Chat::new()
+                    .messages(bubbles)
+                    .message(ChatMessage::assistant(ChatStatus::new("Searching…")))
+                    .message(ChatMessage::assistant(ChatLoading::new()))
+                    .placeholder("Ask something…")
+                    .streaming(true)
+                    .quick_reply("Yes")
+                    .quick_reply("No")
+                    .on_send(move |value: String| {
+                        messages_clone.update(|m| {
+                            let mut next = m.clone();
+                            next.push(value.clone());
+                            next
+                        });
+                    })
+                    .on_cancel(move || {
+                        cancelled_clone.update(|c| c + 1);
+                    }),
+            )
+            .child(TextBlock::paragraph(&format!("Messages: {}", sent.len())))
+            .child(TextBlock::paragraph(&format!(
+                "Last: {}",
+                sent.last().cloned().unwrap_or_default()
+            )))
+            .child(TextBlock::paragraph(&format!(
+                "Cancelled: {}",
+                cancelled_count
+            )))
+            .into()
+    }
+}
+
+struct AudioInputApp;
+
+impl View for AudioInputApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let captured = use_state(ctx, String::new());
+        let captured_display = captured.get();
+        let captured_clone = captured.clone();
+        // Counters rather than one boolean: each round trip re-renders the tree and
+        // replaces the button, which fires a blur that would reset a boolean flag.
+        let focuses = use_state(ctx, 0usize);
+        let focus_count = focuses.get();
+        let focus_clone = focuses.clone();
+        let blurs = use_state(ctx, 0usize);
+        let blur_count = blurs.get();
+        let blur_clone = blurs.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("AudioInput Test"))
+            .child(
+                AudioInput::new()
+                    .label("Record")
+                    .recording_label("Stop")
+                    .chunk_interval(500)
+                    .sample_rate(44100)
+                    .on_capture(move |value: String| {
+                        captured_clone.set(value);
+                    })
+                    .on_focus(move || {
+                        focus_clone.update(|c| c + 1);
+                    })
+                    .on_blur(move || {
+                        blur_clone.update(|c| c + 1);
+                    }),
+            )
+            .child(TextBlock::paragraph(&format!(
+                "Captured: {}",
+                captured_display
+            )))
+            .child(TextBlock::paragraph(&format!("Focuses: {}", focus_count)))
+            .child(TextBlock::paragraph(&format!("Blurs: {}", blur_count)))
+            .into()
+    }
+}
+
+struct CameraInputApp;
+
+impl View for CameraInputApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let captured = use_state(ctx, String::new());
+        let captured_display = captured.get();
+        let captured_clone = captured.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("CameraInput Test"))
+            .child(
+                CameraInput::new()
+                    .placeholder("Point at something")
+                    .facing_mode(FacingMode::Environment)
+                    .capture_mode(CaptureMode::Image)
+                    .on_capture(move |value: String| {
+                        captured_clone.set(value);
+                    })
+                    .on_focus(|| {})
+                    .on_blur(|| {}),
+            )
+            .child(TextBlock::paragraph(&format!(
+                "Captured: {}",
+                captured_display
+            )))
+            .into()
+    }
+}
+
+struct SignatureInputApp;
+
+impl View for SignatureInputApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let signature = use_state(ctx, String::new());
+        let signature_display = signature.get();
+        let sign_clone = signature.clone();
+        let clear_clone = signature.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("SignatureInput Test"))
+            .child(
+                SignatureInput::new()
+                    .placeholder("Sign here")
+                    .pen(Color::Named(NamedColor::Primary))
+                    .pen_thickness(2.0)
+                    .on_sign(move |value: String| {
+                        sign_clone.set(value);
+                    })
+                    .on_clear(move || {
+                        clear_clone.set(String::new());
+                    })
+                    .on_focus(|| {})
+                    .on_blur(|| {}),
+            )
+            .child(TextBlock::paragraph(&format!(
+                "Signature: {}",
+                signature_display
+            )))
             .into()
     }
 }
