@@ -11,6 +11,7 @@ use crate::core::signals::{ServerSignals, SignalRegistry};
 use crate::views::view::View;
 
 use super::download::DownloadService;
+use super::upload::UploadService;
 use super::ws::FuncView;
 
 /// Per-connection state holding an isolated Runtime and Reconciler.
@@ -108,6 +109,7 @@ impl AppSessionStore {
         // Per-connection.
         services.register(Arc::new(SignalRegistry::new()));
         services.register(Arc::new(DownloadService::new(connection_id.to_string())));
+        services.register(Arc::new(UploadService::new(connection_id.to_string())));
 
         let (resolved_id, view) = match self.apps.resolve(app_id) {
             Some(descriptor) => (descriptor.id.clone(), descriptor.create_view()),
@@ -386,6 +388,7 @@ mod tests {
         assert!(services.get::<SignalRegistry>().is_some());
         assert!(services.get::<ServerSignals>().is_some());
         assert!(services.get::<DownloadService>().is_some());
+        assert!(services.get::<UploadService>().is_some());
 
         // The runtime hands the same registry to every BuildContext it creates.
         let runtime_services = session_arc.read().await.runtime.services().clone();
@@ -436,6 +439,15 @@ mod tests {
         assert_eq!(downloads_a.connection_id(), "conn-a");
         assert_eq!(downloads_b.connection_id(), "conn-b");
         assert!(!Arc::ptr_eq(&downloads_a, &downloads_b));
+
+        // Uploads are scoped the same way: a POST URL minted for one connection
+        // must not resolve against another's registry.
+        let uploads_a = a.read().await.services.get::<UploadService>().unwrap();
+        let uploads_b = b.read().await.services.get::<UploadService>().unwrap();
+
+        assert_eq!(uploads_a.connection_id(), "conn-a");
+        assert_eq!(uploads_b.connection_id(), "conn-b");
+        assert!(!Arc::ptr_eq(&uploads_a, &uploads_b));
     }
 
     #[tokio::test]
