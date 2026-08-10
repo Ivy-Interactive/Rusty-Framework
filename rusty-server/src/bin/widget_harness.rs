@@ -49,6 +49,10 @@ enum WidgetKind {
     Table,
     Dialog,
     Tooltip,
+    Blade,
+    Breadcrumbs,
+    Pagination,
+    Toolbar,
 }
 
 impl WidgetKind {
@@ -93,6 +97,10 @@ impl WidgetKind {
             WidgetKind::Table => TableApp.build(ctx),
             WidgetKind::Dialog => DialogApp.build(ctx),
             WidgetKind::Tooltip => TooltipApp.build(ctx),
+            WidgetKind::Blade => BladeApp.build(ctx),
+            WidgetKind::Breadcrumbs => BreadcrumbsApp.build(ctx),
+            WidgetKind::Pagination => PaginationApp.build(ctx),
+            WidgetKind::Toolbar => ToolbarApp.build(ctx),
         }
     }
 }
@@ -1152,6 +1160,137 @@ impl View for TooltipApp {
                 "Text can be explained too",
                 TextBlock::paragraph("Hover this text"),
             ))
+            .into()
+    }
+}
+
+struct BladeApp;
+
+impl View for BladeApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        // One `blade` kind covers both widgets: a container with two blades in it.
+        let closes = use_state(ctx, 0i32);
+        let refreshes = use_state(ctx, 0i32);
+        let closes_val = closes.get();
+        let refreshes_val = refreshes.get();
+        let root_refresh = refreshes.clone();
+        let child_refresh = refreshes.clone();
+        let child_close = closes.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Blade Test"))
+            .child(
+                BladeContainer::new()
+                    .blade(
+                        Blade::new(0)
+                            .title("Root")
+                            .width(Size::Px(240.0))
+                            .child(TextBlock::paragraph("The root blade cannot be closed."))
+                            .on_refresh(move || {
+                                root_refresh.update(|n| n + 1);
+                            }),
+                    )
+                    .blade(
+                        Blade::new(1)
+                            .title("Details")
+                            .child(TextBlock::paragraph("A pushed blade."))
+                            .on_close(move || {
+                                child_close.update(|n| n + 1);
+                            })
+                            .on_refresh(move || {
+                                child_refresh.update(|n| n + 1);
+                            }),
+                    ),
+            )
+            .child(TextBlock::paragraph(&format!(
+                "Closes: {} Refreshes: {}",
+                closes_val, refreshes_val
+            )))
+            .into()
+    }
+}
+
+struct BreadcrumbsApp;
+
+impl View for BreadcrumbsApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let clicked = use_state(ctx, -1i32);
+        let clicked_val = clicked.get();
+        let clicked_clone = clicked.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Breadcrumbs Test"))
+            .child(
+                Breadcrumbs::new()
+                    .item(BreadcrumbItem::new("Home").icon("home"))
+                    .item(BreadcrumbItem::new("Projects"))
+                    .item(BreadcrumbItem::new("Rusty").not_clickable())
+                    .item(BreadcrumbItem::new("Widgets"))
+                    .separator(">")
+                    .on_item_click(move |index| {
+                        clicked_clone.set(index as i32);
+                    }),
+            )
+            .child(TextBlock::paragraph(&format!("Clicked: {}", clicked_val)))
+            .into()
+    }
+}
+
+struct PaginationApp;
+
+impl View for PaginationApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let page = use_state(ctx, 1u32);
+        let page_val = page.get();
+        let page_clone = page.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Pagination Test"))
+            .child(
+                Pagination::new(page_val, 10)
+                    .siblings(1)
+                    .boundaries(1)
+                    .on_change(move |next| {
+                        page_clone.set(next);
+                    }),
+            )
+            .child(TextBlock::paragraph(&format!("Page: {}", page_val)))
+            .into()
+    }
+}
+
+struct ToolbarApp;
+
+impl View for ToolbarApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let selected = use_state(ctx, String::new());
+        let selected_val = selected.get();
+        let selected_clone = selected.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Toolbar Test"))
+            .child(
+                Toolbar::new()
+                    .item(ToolbarItem::button("save").label("Save").icon("save"))
+                    .item(ToolbarItem::separator())
+                    .item(
+                        ToolbarItem::group("Format")
+                            .item(ToolbarItem::button("bold").label("Bold").checked(true))
+                            .item(ToolbarItem::button("italic").label("Italic")),
+                    )
+                    .item(ToolbarItem::button("delete").label("Delete").disabled(true))
+                    .on_select(move |tag| {
+                        selected_clone.set(tag);
+                    }),
+            )
+            .child(TextBlock::paragraph(&format!(
+                "Selected: {}",
+                selected_val
+            )))
             .into()
     }
 }

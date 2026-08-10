@@ -49,6 +49,22 @@
     .list-item [data-list-item-subtitle] { color: #666; font-size: 0.9em; }
     .radio-group { display: flex; gap: 8px; }
     [data-widget-type="radio_group"][data-orientation="vertical"] .radio-group { flex-direction: column; }
+    .blade-container { display: flex; flex-direction: row; align-items: stretch; gap: 1px; background: #e0e0e0; }
+    .blade { display: flex; flex-direction: column; background: white; min-width: 200px; }
+    .blade-header { display: flex; align-items: center; gap: 8px; padding: 8px; border-bottom: 1px solid #e0e0e0; }
+    .blade-header [data-blade-title] { font-weight: bold; flex: 1 1 auto; }
+    .blade [data-blade-body] { padding: 8px; }
+    .breadcrumbs ol { display: flex; align-items: center; gap: 6px; list-style: none; }
+    .breadcrumbs [data-breadcrumb-separator] { color: #999; }
+    .breadcrumbs button { padding: 2px 4px; border: none; background: none; color: #0066cc; }
+    .pagination { display: flex; align-items: center; gap: 4px; }
+    .pagination button { padding: 4px 8px; }
+    .pagination button[data-active="true"] { background: #0066cc; color: white; border-color: #0066cc; }
+    .toolbar { display: flex; align-items: center; gap: 4px; }
+    .toolbar button { padding: 4px 8px; }
+    .toolbar button[data-checked="true"] { background: #e6f0fb; border-color: #0066cc; }
+    .toolbar [role="separator"] { border-left: 1px solid #e0e0e0; align-self: stretch; margin: 0 4px; }
+    .toolbar [role="group"] { display: flex; align-items: center; gap: 4px; }
   </style>
 </head>
 <body>
@@ -836,6 +852,157 @@
             });
           }
           el.appendChild(select);
+          break;
+        }
+        case 'blade_container': {
+          el.classList.add('blade-container');
+          (node.children || []).forEach(child => {
+            el.appendChild(renderWidget(child));
+          });
+          break;
+        }
+        case 'blade': {
+          el.classList.add('blade');
+          el.setAttribute('data-blade-index', String(node.index == null ? 0 : node.index));
+          if (node.width) el.style.width = node.width;
+          const header = document.createElement('div');
+          header.classList.add('blade-header');
+          const heading = document.createElement('span');
+          heading.setAttribute('data-blade-title', 'true');
+          heading.textContent = node.title || '';
+          header.appendChild(heading);
+          if (node.hasOnRefresh && node.id) {
+            const refresh = document.createElement('button');
+            refresh.setAttribute('data-blade-refresh', 'true');
+            refresh.textContent = 'Refresh';
+            refresh.addEventListener('click', () => sendEvent(node.id, 'refresh', {}));
+            header.appendChild(refresh);
+          }
+          // BladeWidget hides Close on the root blade, so the harness does too.
+          if (node.hasOnClose && node.id && node.index > 0) {
+            const close = document.createElement('button');
+            close.setAttribute('data-blade-close', 'true');
+            close.textContent = 'Close';
+            close.addEventListener('click', () => sendEvent(node.id, 'close', {}));
+            header.appendChild(close);
+          }
+          el.appendChild(header);
+          const body = document.createElement('div');
+          body.setAttribute('data-blade-body', 'true');
+          (node.children || []).forEach(child => {
+            body.appendChild(renderWidget(child));
+          });
+          el.appendChild(body);
+          break;
+        }
+        case 'breadcrumbs': {
+          el.classList.add('breadcrumbs');
+          if (node.density) el.setAttribute('data-density', node.density);
+          if (node.disabled) el.setAttribute('data-disabled', 'true');
+          const list = document.createElement('ol');
+          const items = node.items || [];
+          const separator = node.separator == null ? '/' : node.separator;
+          items.forEach((item, i) => {
+            const isLast = i === items.length - 1;
+            const crumb = document.createElement('li');
+            crumb.setAttribute('data-breadcrumb-label', item.label);
+            // The last crumb is the current location and never clickable.
+            const clickable = item.hasOnClick && !item.disabled && !node.disabled && !isLast;
+            if (clickable && node.hasOnItemClick && node.id) {
+              const btn = document.createElement('button');
+              btn.textContent = item.label;
+              if (item.tooltip) btn.title = item.tooltip;
+              btn.addEventListener('click', () => sendEvent(node.id, 'itemclick', { index: i }));
+              crumb.appendChild(btn);
+            } else {
+              const span = document.createElement('span');
+              span.textContent = item.label;
+              if (item.tooltip) span.title = item.tooltip;
+              crumb.appendChild(span);
+            }
+            list.appendChild(crumb);
+            if (!isLast) {
+              const sep = document.createElement('li');
+              sep.setAttribute('data-breadcrumb-separator', 'true');
+              sep.textContent = separator;
+              list.appendChild(sep);
+            }
+          });
+          el.appendChild(list);
+          break;
+        }
+        case 'pagination': {
+          el.classList.add('pagination');
+          if (node.density) el.setAttribute('data-density', node.density);
+          const page = node.page == null ? 0 : node.page;
+          const numPages = node.numPages == null ? 0 : node.numPages;
+          const fire = (target) => {
+            if (node.hasOnChange && node.id) sendEvent(node.id, 'change', { value: target });
+          };
+
+          const prev = document.createElement('button');
+          prev.setAttribute('data-page-prev', 'true');
+          prev.textContent = 'Prev';
+          prev.disabled = !!node.disabled || !page || page === 1;
+          prev.addEventListener('click', () => fire(page - 1));
+          el.appendChild(prev);
+
+          for (let p = 1; p <= numPages; p++) {
+            const btn = document.createElement('button');
+            btn.setAttribute('data-page', String(p));
+            if (p === page) btn.setAttribute('data-active', 'true');
+            btn.textContent = String(p);
+            btn.disabled = !!node.disabled;
+            btn.addEventListener('click', () => fire(p));
+            el.appendChild(btn);
+          }
+
+          const next = document.createElement('button');
+          next.setAttribute('data-page-next', 'true');
+          next.textContent = 'Next';
+          next.disabled = !!node.disabled || !page || page === numPages;
+          next.addEventListener('click', () => fire(page + 1));
+          el.appendChild(next);
+          break;
+        }
+        case 'toolbar': {
+          el.classList.add('toolbar');
+          el.setAttribute('role', 'toolbar');
+          if (node.density) el.setAttribute('data-density', node.density);
+          if (node.disabled) el.setAttribute('data-disabled', 'true');
+          const renderItems = (items, parent, inheritedDisabled) => {
+            (items || []).forEach(item => {
+              if (item.variant === 'Group') {
+                const group = document.createElement('div');
+                group.setAttribute('role', 'group');
+                group.setAttribute('data-toolbar-group', item.label || '');
+                renderItems(item.children, group, inheritedDisabled || !!item.disabled);
+                parent.appendChild(group);
+                return;
+              }
+              if (item.variant === 'Separator') {
+                const sep = document.createElement('div');
+                sep.setAttribute('role', 'separator');
+                parent.appendChild(sep);
+                return;
+              }
+              const btn = document.createElement('button');
+              if (item.tag) btn.setAttribute('data-toolbar-tag', item.tag);
+              if (item.checked) btn.setAttribute('data-checked', 'true');
+              if (item.icon) btn.setAttribute('data-icon-name', item.icon);
+              if (item.tooltip) btn.title = item.tooltip;
+              btn.textContent = item.label || item.icon || '';
+              btn.disabled = inheritedDisabled || !!item.disabled;
+              btn.addEventListener('click', () => {
+                // ToolbarWidget ignores an item with no tag.
+                if (item.tag && node.hasOnSelect && node.id) {
+                  sendEvent(node.id, 'select', { tag: item.tag });
+                }
+              });
+              parent.appendChild(btn);
+            });
+          };
+          renderItems(node.items, el, !!node.disabled);
           break;
         }
         default: {
