@@ -50,11 +50,6 @@ Rusty-Framework follows the same architecture as Ivy-Framework:
 - **Server** — WebSocket server (via axum) that communicates with the React frontend using JSON patches
 - **Reconciler** — Diffs widget trees and sends minimal incremental updates
 
-## Repository Layout
-
-See [`docs/repository-structure.md`](docs/repository-structure.md) for the full top-level tree,
-why crates sit at the repo root while `src/` holds only the frontend, and known structural debt.
-
 ## Crate Structure
 
 | Crate | Description |
