@@ -69,14 +69,27 @@ const RESERVED_KEYS: [&str; 5] = ["type", "id", "children", "child", "kind"];
 ///
 /// If a future Ivy sync adds one of them, add it here; `unreadable_events_are_dropped`
 /// pins the current set so the divergence is noticed rather than assumed.
-pub const IVY_EVENT_NAMES: [&str; 8] = [
+///
+/// The reader for each name, so a future audit does not have to re-derive it:
+/// `OnBlur`/`OnFocus`/`OnChange`/`OnSubmit` -- the input widgets and `FormWidget`;
+/// `OnCellClick`/`OnRowAction` -- `DataTableWidget`; `OnClick` -- `ButtonWidget` and
+/// friends; `OnClose`/`OnRefresh` -- `BladeWidget.tsx`; `OnItemClick` --
+/// `BreadcrumbsWidget.tsx`; `OnLinkClick` -- `MarkdownRenderer`/`RichTextBlock`;
+/// `OnSelect` -- `ToolbarWidget.tsx`. `Ivy.Pagination` reads `OnChange`, already listed.
+///
+/// Sorted, because `ivy_events` sorts its output and the array is read in order.
+pub const IVY_EVENT_NAMES: [&str; 12] = [
     "OnBlur",
     "OnCellClick",
     "OnChange",
     "OnClick",
+    "OnClose",
     "OnFocus",
+    "OnItemClick",
     "OnLinkClick",
+    "OnRefresh",
     "OnRowAction",
+    "OnSelect",
     "OnSubmit",
 ];
 
@@ -644,6 +657,100 @@ mod tests {
 
         // Sorted for determinism, and hasOnFocus: false contributes nothing.
         assert_eq!(ivy_events(&json), vec!["OnBlur", "OnChange", "OnSubmit"]);
+    }
+
+    #[test]
+    fn blade_nests_props_and_emits_close_and_refresh() {
+        let node = to_ivy_node(
+            &Blade::new(1)
+                .title("Details")
+                .on_close(|| {})
+                .on_refresh(|| {})
+                .to_json(),
+        )
+        .expect("blade maps to Ivy.Blade");
+
+        assert_eq!(node["type"], "Ivy.Blade");
+        assert_eq!(node["props"]["title"], "Details");
+        assert_eq!(node["props"]["index"], 1);
+        assert_eq!(node["events"], json!(["OnClose", "OnRefresh"]));
+        // The `has*` flags become the events array and must not survive as props.
+        let props = node["props"].as_object().unwrap();
+        assert!(!props.contains_key("hasOnClose"));
+        assert!(!props.contains_key("hasOnRefresh"));
+    }
+
+    #[test]
+    fn blade_container_children_recurse() {
+        let node = to_ivy_node(
+            &BladeContainer::new()
+                .blade(Blade::new(0).title("Root").child(TextBlock::new("hi")))
+                .to_json(),
+        )
+        .expect("blade_container maps to Ivy.BladeContainer");
+
+        assert_eq!(node["type"], "Ivy.BladeContainer");
+        assert_eq!(node["children"][0]["type"], "Ivy.Blade");
+        assert_eq!(node["children"][0]["children"][0]["type"], "Ivy.TextBlock");
+        assert_eq!(node["events"], json!([]));
+    }
+
+    #[test]
+    fn breadcrumbs_emits_item_click_and_keeps_item_flags() {
+        let node = to_ivy_node(
+            &Breadcrumbs::new()
+                .item(BreadcrumbItem::new("Home"))
+                .item(BreadcrumbItem::new("Current").not_clickable())
+                .separator(">")
+                .on_item_click(|_| {})
+                .to_json(),
+        )
+        .expect("breadcrumbs maps to Ivy.Breadcrumbs");
+
+        assert_eq!(node["type"], "Ivy.Breadcrumbs");
+        assert_eq!(node["props"]["separator"], ">");
+        assert_eq!(node["events"], json!(["OnItemClick"]));
+        // The per-item `hasOnClick` is nested inside a prop, so the top-level
+        // `has*` strip leaves it alone -- the frontend reads it per crumb.
+        assert_eq!(node["props"]["items"][0]["hasOnClick"], true);
+        assert_eq!(node["props"]["items"][1]["hasOnClick"], false);
+    }
+
+    #[test]
+    fn pagination_emits_change_and_camel_cases_num_pages() {
+        let node = to_ivy_node(&Pagination::new(3, 20).on_change(|_| {}).to_json())
+            .expect("pagination maps to Ivy.Pagination");
+
+        assert_eq!(node["type"], "Ivy.Pagination");
+        assert_eq!(node["props"]["page"], 3);
+        assert_eq!(node["props"]["numPages"], 20);
+        assert_eq!(node["props"]["siblings"], 1);
+        assert_eq!(node["props"]["boundaries"], 1);
+        assert_eq!(node["events"], json!(["OnChange"]));
+    }
+
+    #[test]
+    fn toolbar_emits_select_and_keeps_nested_variant_pascal_case() {
+        let node = to_ivy_node(
+            &Toolbar::new()
+                .item(ToolbarItem::button("save").label("Save"))
+                .item(ToolbarItem::separator())
+                .item(ToolbarItem::group("Edit").item(ToolbarItem::button("cut")))
+                .density(crate::shared::Density::Compact)
+                .on_select(|_| {})
+                .to_json(),
+        )
+        .expect("toolbar maps to Ivy.Toolbar");
+
+        assert_eq!(node["type"], "Ivy.Toolbar");
+        assert_eq!(node["events"], json!(["OnSelect"]));
+        // Top-level density recases through ENUM_PROPS; the nested variant does
+        // not, which is why ToolbarItemVariant serializes PascalCase itself.
+        assert_eq!(node["props"]["density"], "Small");
+        assert_eq!(node["props"]["items"][0]["variant"], "Default");
+        assert_eq!(node["props"]["items"][1]["variant"], "Separator");
+        assert_eq!(node["props"]["items"][2]["variant"], "Group");
+        assert_eq!(node["props"]["items"][2]["children"][0]["tag"], "cut");
     }
 
     #[test]

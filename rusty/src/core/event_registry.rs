@@ -17,6 +17,10 @@ pub enum EventName {
     Focus,
     Blur,
     Toggle,
+    Close,
+    Refresh,
+    ItemClick,
+    Select,
 }
 
 impl EventName {
@@ -35,6 +39,10 @@ impl EventName {
             EventName::Focus => "focus",
             EventName::Blur => "blur",
             EventName::Toggle => "toggle",
+            EventName::Close => "close",
+            EventName::Refresh => "refresh",
+            EventName::ItemClick => "itemclick",
+            EventName::Select => "select",
         }
     }
 
@@ -56,14 +64,26 @@ impl EventName {
             "focus" => Some(EventName::Focus),
             "blur" => Some(EventName::Blur),
             "toggle" => Some(EventName::Toggle),
+            "close" => Some(EventName::Close),
+            "refresh" => Some(EventName::Refresh),
+            "itemclick" => Some(EventName::ItemClick),
+            "select" => Some(EventName::Select),
             _ => None,
         }
     }
 
-    /// Strip a leading `on` handler prefix and lowercase the rest, so
-    /// `onCellClick`, `cellClick` and `cellclick` all normalize alike.
+    /// Strip a leading `on`/`On` handler prefix and lowercase the rest, so
+    /// `OnCellClick`, `onCellClick`, `cellClick` and `cellclick` all normalize
+    /// alike.
+    ///
+    /// `On` matters because that is the spelling Ivy's frontend sends
+    /// (`eventHandler("OnClose", id, [])`) and the spelling
+    /// [`crate::shared::ivy_node`] emits in its `events` array. Both prefixes
+    /// require an uppercase letter after them, so `online` and `Online` keep
+    /// their `on`.
     fn normalize(s: &str) -> String {
         s.strip_prefix("on")
+            .or_else(|| s.strip_prefix("On"))
             .filter(|rest| rest.starts_with(|c: char| c.is_ascii_uppercase()))
             .unwrap_or(s)
             .to_ascii_lowercase()
@@ -210,6 +230,10 @@ mod tests {
             EventName::Focus,
             EventName::Blur,
             EventName::Toggle,
+            EventName::Close,
+            EventName::Refresh,
+            EventName::ItemClick,
+            EventName::Select,
         ];
 
         for event in all {
@@ -235,6 +259,26 @@ mod tests {
 
         // A leading `on` that is not a handler prefix must not be stripped.
         assert_eq!(EventName::from_str("online"), None);
+    }
+
+    #[test]
+    fn test_from_str_accepts_ivy_pascal_case_wire_names() {
+        // Ivy's frontend sends `eventHandler("OnClose", id, [])`, and
+        // `shared::ivy_node` emits the same spelling in its `events` array, so the
+        // PascalCase prefix has to resolve as well as the camelCase one.
+        assert_eq!(EventName::from_str("OnClick"), Some(EventName::Click));
+        assert_eq!(EventName::from_str("OnClose"), Some(EventName::Close));
+        assert_eq!(EventName::from_str("OnRefresh"), Some(EventName::Refresh));
+        assert_eq!(
+            EventName::from_str("OnItemClick"),
+            Some(EventName::ItemClick)
+        );
+        assert_eq!(EventName::from_str("OnSelect"), Some(EventName::Select));
+        assert_eq!(EventName::canonicalize("OnClose"), "close");
+
+        // `On` is only a prefix when an uppercase letter follows it.
+        assert_eq!(EventName::from_str("Online"), None);
+        assert_eq!(EventName::canonicalize("Online"), "Online");
     }
 
     #[test]

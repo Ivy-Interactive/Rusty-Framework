@@ -8,7 +8,7 @@
 //! `src/frontend` to a Rusty server. Nothing in Rusty consumes this today, except
 //! [`crate::shared::ivy_node`], which builds on it to reshape a whole widget tree.
 //!
-//! All 43 Rusty widget types have an entry. `every_widget_type_is_mapped` derives its
+//! All 48 Rusty widget types have an entry. `every_widget_type_is_mapped` derives its
 //! list by scanning `rusty/src/widgets/*.rs` for both ways a widget declares its wire
 //! name -- a `"type": "..."` literal in a hand-written `to_json`, and `#[derive(Widget)]`,
 //! which emits the name from `#[widget(type = "...")]` or the struct name -- so a widget
@@ -79,10 +79,13 @@ pub enum IvyWidget {
 /// ```
 pub fn ivy_widget(rusty_type: &str) -> Option<IvyWidget> {
     match rusty_type {
-        // Mechanical snake_case → Ivy.PascalCase mappings (28 widgets)
+        // Mechanical snake_case → Ivy.PascalCase mappings (33 widgets)
         "animation" => Some(IvyWidget::One("Ivy.Animation")),
         "avatar" => Some(IvyWidget::One("Ivy.Avatar")),
         "badge" => Some(IvyWidget::One("Ivy.Badge")),
+        "blade" => Some(IvyWidget::One("Ivy.Blade")),
+        "blade_container" => Some(IvyWidget::One("Ivy.BladeContainer")),
+        "breadcrumbs" => Some(IvyWidget::One("Ivy.Breadcrumbs")),
         "button" => Some(IvyWidget::One("Ivy.Button")),
         "callout" => Some(IvyWidget::One("Ivy.Callout")),
         "card" => Some(IvyWidget::One("Ivy.Card")),
@@ -98,6 +101,7 @@ pub fn ivy_widget(rusty_type: &str) -> Option<IvyWidget> {
         "list" => Some(IvyWidget::One("Ivy.List")),
         "list_item" => Some(IvyWidget::One("Ivy.ListItem")),
         "number_input" => Some(IvyWidget::One("Ivy.NumberInput")),
+        "pagination" => Some(IvyWidget::One("Ivy.Pagination")),
         "progress" => Some(IvyWidget::One("Ivy.Progress")),
         "separator" => Some(IvyWidget::One("Ivy.Separator")),
         "skeleton" => Some(IvyWidget::One("Ivy.Skeleton")),
@@ -107,6 +111,7 @@ pub fn ivy_widget(rusty_type: &str) -> Option<IvyWidget> {
         "terminal" => Some(IvyWidget::One("Ivy.Terminal")),
         "text_block" => Some(IvyWidget::One("Ivy.TextBlock")),
         "text_input" => Some(IvyWidget::One("Ivy.TextInput")),
+        "toolbar" => Some(IvyWidget::One("Ivy.Toolbar")),
         "tooltip" => Some(IvyWidget::One("Ivy.Tooltip")),
 
         // Renamed widgets (4)
@@ -339,8 +344,8 @@ mod tests {
         // style, a moved directory): an empty or tiny list would pass vacuously,
         // which is the exact failure this test was rewritten to eliminate.
         assert!(
-            types.len() >= 38,
-            "expected at least 38 widget types scanned from rusty/src/widgets, found {}: {:?}. \
+            types.len() >= 48,
+            "expected at least 48 widget types scanned from rusty/src/widgets, found {}: {:?}. \
              If the to_json `\"type\": \"...\"` convention changed, fix this scan.",
             types.len(),
             types
@@ -383,13 +388,18 @@ mod tests {
         // still cannot drift.
         let widgets: Vec<Box<dyn WidgetData>> = vec![
             Box::new(ActivityHeatmap::new()),
+            Box::new(Animation::new()),
             Box::new(Avatar::new("AB")),
             Box::new(Badge::new("test")),
+            Box::new(Blade::new(0)),
+            Box::new(BladeContainer::new()),
+            Box::new(Breadcrumbs::new()),
             Box::new(Button::new("test")),
             Box::new(Callout::new()),
             Box::new(Card::new()),
             Box::new(Checkbox::new(false)),
             Box::new(ColorInput::new()),
+            Box::new(Confetti::new()),
             Box::new(Container::new()),
             Box::new(DataTable::new(vec![])),
             Box::new(DateInput::new()),
@@ -405,6 +415,7 @@ mod tests {
             Box::new(ListItem::new("test")),
             Box::new(MultiSelect::new(vec![])),
             Box::new(NumberInput::new()),
+            Box::new(Pagination::new(1, 5)),
             Box::new(Progress::new(0.5)),
             Box::new(QrCode::new("test")),
             Box::new(RadioGroup::new(vec![])),
@@ -414,18 +425,22 @@ mod tests {
             Box::new(Skeleton::new()),
             Box::new(Slider::new(0.0)),
             Box::new(Spacer::new()),
+            Box::new(StackedProgress::new()),
             Box::new(Table::new(vec![])),
             Box::new(Terminal::new()),
             Box::new(TextArea::new()),
             Box::new(TextBlock::new("test")),
             Box::new(TextInput::new()),
+            Box::new(Toolbar::new()),
             Box::new(Tooltip::new("test", TextBlock::new("x"))),
+            Box::new(WireframeCallout::new("test")),
+            Box::new(WireframeNote::new("test")),
         ];
 
         assert_eq!(
             widgets.len(),
-            38,
-            "constructed-widget list drifted from the 38 widget types"
+            48,
+            "constructed-widget list drifted from the 48 widget types"
         );
 
         for widget in widgets {
