@@ -49,6 +49,8 @@ enum WidgetKind {
     Table,
     Dialog,
     Tooltip,
+    Effects,
+    Wireframe,
 }
 
 impl WidgetKind {
@@ -93,6 +95,8 @@ impl WidgetKind {
             WidgetKind::Table => TableApp.build(ctx),
             WidgetKind::Dialog => DialogApp.build(ctx),
             WidgetKind::Tooltip => TooltipApp.build(ctx),
+            WidgetKind::Effects => EffectsApp.build(ctx),
+            WidgetKind::Wireframe => WireframeApp.build(ctx),
         }
     }
 }
@@ -1152,6 +1156,88 @@ impl View for TooltipApp {
                 "Text can be explained too",
                 TextBlock::paragraph("Hover this text"),
             ))
+            .into()
+    }
+}
+
+struct EffectsApp;
+
+impl View for EffectsApp {
+    fn build(&self, ctx: &mut BuildContext) -> Element {
+        let selected = use_state(ctx, None::<usize>);
+        let selected_val = selected.get();
+        let selected_clone = selected.clone();
+
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Effects Test"))
+            .child(
+                Confetti::new()
+                    .trigger(EffectTrigger::Click)
+                    .child(Button::new("Celebrate")),
+            )
+            .child(
+                Animation::new()
+                    .animation_type(AnimationType::Bounce)
+                    .easing(AnimationEasing::EaseInOut)
+                    .duration(1.0)
+                    .child(TextBlock::paragraph("Bouncing")),
+            )
+            .child(
+                Animation::new()
+                    .animation_type(AnimationType::FadeIn)
+                    .easing(AnimationEasing::Linear)
+                    .visible(false)
+                    .child(TextBlock::paragraph("Fading")),
+            )
+            .child(
+                Animation::new()
+                    .animation_type(AnimationType::SlideIn)
+                    .direction(AnimationDirection::Up)
+                    .easing(AnimationEasing::BackOut)
+                    .child(TextBlock::paragraph("Sliding")),
+            )
+            .child(
+                StackedProgress::new()
+                    .segment(
+                        ProgressSegment::new(3.0)
+                            .label("Done")
+                            .color(Color::Named(NamedColor::Success)),
+                    )
+                    .segment(ProgressSegment::new(2.0).label("In progress"))
+                    .segment(ProgressSegment::new(5.0).label("Todo"))
+                    .show_labels(true),
+            )
+            .child(
+                StackedProgress::new()
+                    .segment(ProgressSegment::new(1.0).label("A"))
+                    .segment(ProgressSegment::new(1.0).label("B"))
+                    .segment(ProgressSegment::new(1.0).label("C"))
+                    .on_select(move |index| {
+                        selected_clone.set(Some(index));
+                    }),
+            )
+            .child(TextBlock::paragraph(&format!(
+                "Selected: {}",
+                selected_val.map(|v| v.to_string()).unwrap_or_default()
+            )))
+            .into()
+    }
+}
+
+struct WireframeApp;
+
+impl View for WireframeApp {
+    fn build(&self, _ctx: &mut BuildContext) -> Element {
+        Layout::vertical()
+            .gap(16.0)
+            .child(TextBlock::h1("Wireframe Test"))
+            .child(
+                WireframeCallout::new("Move this button up")
+                    .title("UX note")
+                    .child(TextBlock::paragraph("Save")),
+            )
+            .child(WireframeNote::new("Consider dark mode").author("Alex"))
             .into()
     }
 }
