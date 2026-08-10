@@ -21,6 +21,8 @@ Hooks let you add state and side effects to views. They must be called in the sa
 | `use_signal` | Send and receive messages between views, per session or server-wide |
 | `use_download` | Register a download and get the URL to serve it from |
 | `use_download_stream` | Serve a large download as a chunked stream instead of buffering it |
+| `use_stream` / `use_stream_text` | Consume an async stream into view state chunk by chunk, with retries |
+| `use_upload` / `use_upload_to` | Accept a file from the browser with progress, into view state or a sink |
 | `use_alert` | Show a modal alert and get the user's answer in a callback |
 | `use_trigger` | Render an element on demand, carrying a value to its factory |
 
