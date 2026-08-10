@@ -11,12 +11,15 @@ test.afterAll(() => {
   stopHarness(harness);
 });
 
-test('confetti renders with its trigger and child', async ({ page }) => {
+test('confetti renders one node per trigger', async ({ page }) => {
   await navigateToHarness(page, harness.port);
   const confetti = page.locator('[data-widget-type="confetti"]');
-  await expect(confetti).toHaveCount(1);
-  await expect(confetti).toHaveAttribute('data-trigger', 'click');
-  await expect(confetti.locator('button:has-text("Celebrate")')).toBeVisible();
+  await expect(confetti).toHaveCount(3);
+
+  await expect(confetti.nth(0)).toHaveAttribute('data-trigger', 'auto');
+  await expect(confetti.nth(1)).toHaveAttribute('data-trigger', 'click');
+  await expect(confetti.nth(1).locator('button:has-text("Celebrate")')).toBeVisible();
+  await expect(confetti.nth(2)).toHaveAttribute('data-trigger', 'hover');
 });
 
 test('animation nodes render with their type, easing and visibility', async ({ page }) => {

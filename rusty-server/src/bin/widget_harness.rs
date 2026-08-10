@@ -1173,8 +1173,18 @@ impl View for EffectsApp {
             .child(TextBlock::h1("Effects Test"))
             .child(
                 Confetti::new()
+                    .trigger(EffectTrigger::Auto)
+                    .child(Button::new("Auto")),
+            )
+            .child(
+                Confetti::new()
                     .trigger(EffectTrigger::Click)
                     .child(Button::new("Celebrate")),
+            )
+            .child(
+                Confetti::new()
+                    .trigger(EffectTrigger::Hover)
+                    .child(Button::new("Hover for confetti")),
             )
             .child(
                 Animation::new()
