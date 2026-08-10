@@ -89,9 +89,9 @@ Rusty emits widget type names in `snake_case` (e.g., `"data_table"`, `"qr_code"`
 
 The vendored Ivy React frontend at `src/frontend` expects widget type names in the format `"Ivy.PascalCase"` (e.g., `"Ivy.DataTable"`, `"Ivy.Terminal"`). The `shared::widget_names` module records the mapping between Rusty's `snake_case` names and Ivy's keys:
 
-All 38 widget types have an entry:
+All 45 widget types have an entry:
 
-- 25 widgets map mechanically (`badge` → `"Ivy.Badge"`, `button` → `"Ivy.Button"`, etc.)
+- 32 widgets map mechanically (`badge` → `"Ivy.Badge"`, `button` → `"Ivy.Button"`, etc.)
 - 4 widgets are renamed (`select` → `"Ivy.SelectInput"`, `checkbox` → `"Ivy.BoolInput"`, `container` → `"Ivy.Box"`, `date_input` → `"Ivy.DateTimeInput"`)
 - 1 widget maps one-to-many (`layout` → `"Ivy.StackLayout"` or `"Ivy.GridLayout"` depending on the `direction` prop)
 - 1 widget collapses into a *variant* of another (`text_area` → `"Ivy.TextInput"` with `variant: "Textarea"`, since Ivy has no textarea widget). This is `IvyWidget::WithProp`, which synthesizes a prop Rust never sends — as distinct from `ByProp`, which reads one Rust already sends.
